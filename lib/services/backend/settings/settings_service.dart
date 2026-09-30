@@ -433,6 +433,7 @@ class SettingsService {
   }
 
   Future<Map<String, dynamic>> getAppUpdateDict() async {
+    final isDivyPreview = FilesystemSvc.packageInfo.packageName == 'com.bluebubbles.messaging.divy';
     bool available = true;
     if (!kIsDesktop && (kIsWeb || (await StoreChecker.getSource) != Source.IS_INSTALLED_FROM_LOCAL_SOURCE)) {
       available = false;
@@ -442,17 +443,38 @@ class SettingsService {
     }
 
     final github = GitHub();
-    final stream = github.repositories.listReleases(RepositorySlug('bluebubblesapp', 'bluebubbles-app'));
+    final stream = github.repositories.listReleases(
+      RepositorySlug(isDivyPreview ? 'MishDivy' : 'bluebubblesapp', 'bluebubbles-app'),
+    );
     final release = await stream.firstWhere(
-        (element) => !(element.isDraft ?? false) && !(element.isPrerelease ?? false) && element.tagName != null);
+      (element) =>
+          !(element.isDraft ?? false) &&
+          !(element.isPrerelease ?? false) &&
+          element.tagName != null &&
+          (!isDivyPreview || RegExp(r'^v\d+\.\d+\.\d+\+\d+-divy$').hasMatch(element.tagName!)),
+      orElse: () => Release(),
+    );
+    if (release.tagName == null) {
+      return {
+        'available': false,
+        'latestRelease': release,
+        'isDesktopRelease': false,
+        'parsedVersion': <String, String>{
+          'version': FilesystemSvc.packageInfo.version,
+          'code': '0',
+          'build': FilesystemSvc.packageInfo.buildNumber,
+        },
+      };
+    }
     final version = release.tagName!.split("+").first.replaceAll("v", "");
     final code = release.tagName!.split("+").last.split('-').first;
     final isDesktopRelease = release.tagName!.split('+').last.contains('desktop');
 
     String buildNumber = "";
     if (Platform.isAndroid) {
-      buildNumber =
-          FilesystemSvc.packageInfo.buildNumber.lastChars(min(4, FilesystemSvc.packageInfo.buildNumber.length));
+      buildNumber = isDivyPreview
+          ? FilesystemSvc.packageInfo.buildNumber
+          : FilesystemSvc.packageInfo.buildNumber.lastChars(min(4, FilesystemSvc.packageInfo.buildNumber.length));
       if (int.parse(code) <= int.parse(buildNumber) ||
           PrefsSvc.server.getClientUpdateCheckCode() == code ||
           (Platform.isAndroid && isDesktopRelease)) {

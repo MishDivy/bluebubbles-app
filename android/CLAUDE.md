@@ -23,3 +23,11 @@ Flutter side: `lib/services/backend/java_dart_interop/`
 ## Build Config
 - Target SDK: 35 | NDK: 27.0 | Java/Kotlin compat: version 21
 - Gradle with Kotlin plugin
+
+## Personal preview flavor
+
+`divy` uses `com.bluebubbles.messaging.divy` and a separate file-provider authority.
+Release builds require the release signing configuration; debug CI builds are not
+distribution artifacts. See `docs/preview-releases.md` for versioning, signing,
+update-source isolation and migration back to the official app. Keep these
+personal packaging changes out of upstream reaction patches.

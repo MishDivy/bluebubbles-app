@@ -84,6 +84,15 @@ android {
     flavorDimensions = ["app"]
 
     productFlavors {
+        divy {
+            dimension "app"
+            resValue "string", "app_name_en", "BlueBubbles Preview (Divy)"
+            resValue "color", "ic_launcher_background", "#49dbde"
+            resValue "string", "file_provider", "com.bluebubbles.messaging.divy.fileprovider"
+            applicationId "com.bluebubbles.messaging.divy"
+            // Independent, monotonic release counter for this separately signed app.
+            versionCode flutterVersionCode.toInteger()
+        }
         joel {
             dimension "app"
             resValue "string", "app_name_en", "BlueBubbles Dev (Joel)"
@@ -131,6 +140,7 @@ android {
 
     buildTypes {
         release {
+            productFlavors.divy.signingConfig signingConfigs.release
             productFlavors.joel.signingConfig signingConfigs.debug
             productFlavors.tanay.signingConfig signingConfigs.debug
             productFlavors.alpha.signingConfig signingConfigs.release
