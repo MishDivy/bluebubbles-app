@@ -1,5 +1,12 @@
 # scripts/ — Developer Scripts
 
+## prepare_preview_artifact.py
+
+Verifies the preview APK package, build number, ARM64 code and unsigned release
+state, aligns it, and records its checksum and source/CI identity. The candidate
+workflow uploads this artifact for local signing. It needs Android build-tools
+36.0.0; it does not use a signing key. Tests live in `scripts/tests/`.
+
 ## dart-fix-common-issues.sh
 Runs `dart fix --apply` across the project to automatically resolve common lint issues (unused imports, deprecated APIs, etc.).
 

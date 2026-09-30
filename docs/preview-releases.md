@@ -1,8 +1,8 @@
 # BlueBubbles preview releases
 
 The `divy` Android flavor is an isolated candidate for testing custom reactions.
-It does not replace the official app. No signed release, signing key, download
-website, or phone installation has been created by this implementation.
+It uses its own package ID and data directory. Candidate CI builds produce an
+unsigned release APK; local signing and device acceptance precede publication.
 
 ## Package and build identity
 
@@ -16,8 +16,62 @@ website, or phone installation has been created by this implementation.
 - Keep personal packaging changes separate from reaction commits when preparing
   upstream contributions. Preserve upstream licenses and authorship.
 
-CI compiles a debug-signed ARM64 APK only to detect build errors. It does not
-upload, publish, or install that APK. Do not use a debug build as the everyday app.
+CI builds an unsigned ARM64 release APK and uploads it with `candidate.json` and
+`SHA256SUMS`. It runs on the feature branch and records the source commit and CI
+run. Its default build number is the workflow run number; manual dispatch can
+supply a positive override. Reserve published version codes so later candidates
+stay above the installed version. Pull request jobs build and verify but do not
+upload candidates. The workflow has no signing credentials and does not publish
+releases or install apps. GitHub manual dispatch requires the workflow file on
+the repository's default branch; feature-branch pushes work independently.
+
+The `ORG_GRADLE_PROJECT_divyUnsignedCandidate=true` environment variable enables
+unsigned builds only for the `divy` release flavor. Normal `divy` release builds
+still require the release signing configuration. The artifact verifier rejects
+the wrong package or build number, debuggable builds, other ABIs and existing
+signatures. It aligns the APK with 16 KiB native-library pages before recording
+the checksum. Local signing must preserve this alignment.
+
+## Local signing of a CI candidate
+
+Download the artifact from the reviewed run. Match its `sourceCommit`, run ID,
+run attempt and package/version to that run, then check `SHA256SUMS` before
+signing. A checksum from the same artifact detects corruption; the reviewed CI
+run and source commit establish where the build came from.
+
+Only Android build-tools 36.0.0 and Java are needed locally. Google's Linux
+archive is about 61 MiB; extract it into the dedicated build cache and verify
+its checksum against Google's repository metadata. A full Android SDK or NDK
+is unnecessary for signing. Keep the signing key and passwords outside the repo
+and CI. The owner must keep an encrypted key backup and its public certificate
+fingerprint so future preview updates use the same signing identity.
+
+Use `apksigner sign --ks <approved-keystore> --ks-key-alias <approved-alias>
+--out <signed-apk> <verified-unsigned-apk>` and enter passwords through the
+local prompt. Do not put passwords in command arguments or commit signing
+properties. Then run `apksigner verify --verbose --print-certs <signed-apk>` and
+`zipalign -c -P 16 -v 4 <signed-apk>`. Compare the certificate fingerprint to
+the owner's recorded identity and check package, version, non-debuggable state
+and SHA-256 again. Any APK modification after signing invalidates its signature.
+
+The prepare script's tests double the Android tool boundary. CI verification and
+successful local signature verification are still required for the actual APK.
+
+## Firebase setup for the preview package
+
+The app gets Firebase configuration from the existing server during the normal
+server URL/password setup. Android initializes Firebase with those runtime
+options; the manifest removes automatic `FirebaseInitProvider` initialization.
+The candidate embeds no `google-services.json` or account credentials. Its
+separate package starts with separate preferences and registers its own token
+with the same server after setup.
+
+This code path supports the preview flavor, but it does not prove that the
+project's API-key restrictions or App Check permit the new package and signing
+certificate. Device acceptance must verify Firebase initialization, token
+registration and background notification delivery. If registration fails,
+inspect the existing project's restrictions with the owner before changing
+them. Keep normal account setup and the official installation available.
 
 ## Before the first release
 

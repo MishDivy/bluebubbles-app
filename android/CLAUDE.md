@@ -27,7 +27,8 @@ Flutter side: `lib/services/backend/java_dart_interop/`
 ## Personal preview flavor
 
 `divy` uses `com.bluebubbles.messaging.divy` and a separate file-provider authority.
-Release builds require the release signing configuration; debug CI builds are not
-distribution artifacts. See `docs/preview-releases.md` for versioning, signing,
+Release builds require the release signing configuration unless the caller sets
+the divy-only `divyUnsignedCandidate=true` Gradle property. CI uploads an unsigned
+release candidate for local signing. See `docs/preview-releases.md` for versioning, signing,
 update-source isolation and migration back to the official app. Keep these
 personal packaging changes out of upstream reaction patches.

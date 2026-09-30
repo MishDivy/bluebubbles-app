@@ -28,6 +28,9 @@ if (flutterVersionName == null) {
     flutterVersionName = '1.0'
 }
 
+// CI candidates are signed locally after artifact verification.
+def divyUnsignedCandidate = project.findProperty('divyUnsignedCandidate') == 'true'
+
 android {
     namespace "com.bluebubbles.messaging"
     compileSdk 36
@@ -140,7 +143,7 @@ android {
 
     buildTypes {
         release {
-            productFlavors.divy.signingConfig signingConfigs.release
+            productFlavors.divy.signingConfig = divyUnsignedCandidate ? null : signingConfigs.release
             productFlavors.joel.signingConfig signingConfigs.debug
             productFlavors.tanay.signingConfig signingConfigs.debug
             productFlavors.alpha.signingConfig signingConfigs.release
