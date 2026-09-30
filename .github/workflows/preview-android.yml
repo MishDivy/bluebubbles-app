@@ -35,7 +35,13 @@ jobs:
       - name: Supply non-secret build placeholder
         run: echo 'KLIPY_API_KEY=' > .env
       - name: Ensure pinned artifact verification tools
-        run: sdkmanager 'build-tools;36.0.0'
+        run: |
+          if [[ ! -x "$ANDROID_HOME/build-tools/36.0.0/apksigner" ]]; then
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;36.0.0'
+          fi
+          for tool in aapt apksigner zipalign; do
+            test -x "$ANDROID_HOME/build-tools/36.0.0/$tool"
+          done
       - name: Test reaction behavior and artifact verifier
         run: |
           fvm flutter test --no-pub test/custom_reactions_test.dart
