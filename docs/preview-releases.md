@@ -10,7 +10,8 @@ unsigned release APK; local signing and device acceptance precede publication.
 - Display name: `BlueBubbles Preview (Divy)`.
 - Minimum Android API: 26, inherited from the upstream app.
 - `versionCode`: the full `--build-number` value, independent of upstream's offset.
-  Allocate a strictly increasing positive integer for each published candidate.
+  ABI splits keep that value instead of Flutter's added ABI offset. Allocate a
+  strictly increasing positive integer for each published candidate.
 - Tag format: `v<upstream version>+<preview build number>-divy`, for example
   `v2.1.1+1-divy`. The example is not a published release or an allocated build.
 - Keep personal packaging changes separate from reaction commits when preparing

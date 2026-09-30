@@ -165,6 +165,15 @@ android {
     }
 }
 
+// Keep the preview counter unchanged when Flutter creates ABI splits.
+android.applicationVariants.configureEach { variant ->
+    if (variant.flavorName == 'divy') {
+        variant.outputs.each { output ->
+            output.versionCodeOverride = flutterVersionCode.toInteger()
+        }
+    }
+}
+
 tasks.matching { it.name == 'preDivyReleaseBuild' }.configureEach {
     doFirst {
         if (!divyUnsignedCandidate) {
