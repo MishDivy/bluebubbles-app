@@ -26,8 +26,10 @@ def inspect_apk(apk, tools_dir, version_code):
             raise ValueError("APK archive is incomplete or corrupt")
         required_libs = {"lib/arm64-v8a/libapp.so", "lib/arm64-v8a/libflutter.so"}
         native_libs = {name for name in entries if name.startswith("lib/") and name.endswith(".so")}
-        if not required_libs.issubset(native_libs) or any(not name.startswith("lib/arm64-v8a/") for name in native_libs):
-            raise ValueError("Candidate must embed Flutter release libraries for ARM64 only")
+        missing_libs = sorted(required_libs - native_libs)
+        unexpected_libs = sorted(name for name in native_libs if not name.startswith("lib/arm64-v8a/"))
+        if missing_libs or unexpected_libs:
+            raise ValueError(f"Candidate native libraries: missing={missing_libs}, non-ARM64={unexpected_libs}")
         if any(re.match(r"META-INF/[^/]+\.(RSA|DSA|EC|SF)$", name, re.I) for name in entries):
             raise ValueError("Candidate contains signing material")
     badging = run_tool(tools_dir / "aapt", "dump", "badging", apk).stdout

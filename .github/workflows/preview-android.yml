@@ -52,7 +52,7 @@ jobs:
         run: |
           test ! -e android/key.properties
           mkdir -p build
-          if fvm flutter build apk --release --flavor divy --target-platform android-arm64 --no-pub --build-number 1 > build/preview-signing-check.log 2>&1; then
+          if fvm flutter build apk --release --flavor divy --target-platform android-arm64 --split-per-abi --no-pub --build-number 1 > build/preview-signing-check.log 2>&1; then
             echo 'Normal preview release unexpectedly accepted a missing signing key'
             exit 1
           fi
@@ -61,6 +61,7 @@ jobs:
             exit 1
           fi
       - name: Compile unsigned ARM64 release candidate
+        id: compile-candidate
         env:
           REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
           ORG_GRADLE_PROJECT_divyUnsignedCandidate: 'true'
@@ -68,13 +69,13 @@ jobs:
           candidate_number="${REQUESTED_BUILD_NUMBER:-$GITHUB_RUN_NUMBER}"
           [[ "$candidate_number" =~ ^[1-9][0-9]*$ ]] && (( candidate_number <= 2100000000 ))
           echo "PREVIEW_BUILD_NUMBER=$candidate_number" >> "$GITHUB_ENV"
-          fvm flutter build apk --release --flavor divy --target-platform android-arm64 --no-pub --build-number "$candidate_number"
+          fvm flutter build apk --release --flavor divy --target-platform android-arm64 --split-per-abi --no-pub --build-number "$candidate_number"
       - name: Verify candidate identity and write provenance
         env:
           BUILD_TOOLS_VERSION: '36.0.0'
         run: |
           python3 scripts/prepare_preview_artifact.py \
-            --apk build/app/outputs/flutter-apk/app-divy-release.apk \
+            --apk build/app/outputs/flutter-apk/app-arm64-v8a-divy-release.apk \
             --tools-dir "$ANDROID_HOME/build-tools/$BUILD_TOOLS_VERSION" \
             --version-code "$PREVIEW_BUILD_NUMBER" \
             --output-dir build/preview-candidate
@@ -87,3 +88,11 @@ jobs:
           path: build/preview-candidate/
           if-no-files-found: error
           retention-days: 7
+      - name: Preserve unverified APK only when a post-build check fails
+        if: failure() && steps.compile-candidate.outcome == 'success' && github.repository == 'MishDivy/bluebubbles-app' && github.ref == 'refs/heads/feature/custom-reactions' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: divy-unverified-diagnostic-${{ github.sha }}-${{ github.run_attempt }}
+          path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
+          retention-days: 1
