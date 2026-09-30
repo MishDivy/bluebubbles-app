@@ -2,7 +2,7 @@ name: Preview Android candidate
 
 on:
   push:
-    branches: [feature/custom-reactions]
+    branches: [main, feature/custom-reactions]
   pull_request:
   workflow_dispatch:
     inputs:
@@ -81,7 +81,7 @@ jobs:
             --output-dir build/preview-candidate
       # This artifact needs the owner's release signature before installation.
       - name: Upload unsigned candidate for local signing
-        if: github.repository == 'MishDivy/bluebubbles-app' && github.ref == 'refs/heads/feature/custom-reactions' && github.event_name != 'pull_request'
+        if: github.repository == 'MishDivy/bluebubbles-app' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/custom-reactions') && github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: divy-unsigned-${{ github.sha }}-${{ github.run_attempt }}
@@ -89,7 +89,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
       - name: Preserve unverified APK only when a post-build check fails
-        if: failure() && steps.compile-candidate.outcome == 'success' && github.repository == 'MishDivy/bluebubbles-app' && github.ref == 'refs/heads/feature/custom-reactions' && github.event_name != 'pull_request'
+        if: failure() && steps.compile-candidate.outcome == 'success' && github.repository == 'MishDivy/bluebubbles-app' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/feature/custom-reactions') && github.event_name != 'pull_request'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: divy-unverified-diagnostic-${{ github.sha }}-${{ github.run_attempt }}

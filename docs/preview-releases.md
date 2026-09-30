@@ -4,6 +4,10 @@ The `divy` Android flavor is an isolated candidate for testing custom reactions.
 It uses its own package ID and data directory. Candidate CI builds produce an
 unsigned release APK; local signing and device acceptance precede publication.
 
+`main` is this fork's production base, starting from the tested custom-reaction
+code. `master` preserves upstream development history and is not the deployment
+source. The app keeps its existing package ID, display name and signing identity.
+
 ## Package and build identity
 
 - Application ID: `com.bluebubbles.messaging.divy`.
@@ -18,12 +22,13 @@ unsigned release APK; local signing and device acceptance precede publication.
   upstream contributions. Preserve upstream licenses and authorship.
 
 CI builds an unsigned ARM64 release APK and uploads it with `candidate.json` and
-`SHA256SUMS`. It runs on the feature branch and records the source commit and CI
-run. Its default build number is the workflow run number; manual dispatch can
-supply a positive override. Reserve published version codes so later candidates
+`SHA256SUMS`. It runs on `main` and `feature/custom-reactions` and records the
+source commit and CI run. Its default build number is the workflow run number;
+manual dispatch can supply a positive override. Reserve published version codes so later candidates
 stay above the installed version. Pull request jobs build and verify but do not
 upload candidates. The workflow has no signing credentials and does not publish
-releases or install apps. GitHub manual dispatch requires the workflow file on
+releases or install apps. Artifact uploads require this fork, one of those two
+branches and a non-PR run. GitHub manual dispatch requires the workflow file on
 the repository's default branch; feature-branch pushes work independently.
 
 The `ORG_GRADLE_PROJECT_divyUnsignedCandidate=true` environment variable enables

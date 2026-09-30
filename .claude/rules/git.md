@@ -31,8 +31,11 @@ wip: sync animation and chat list update timing
 
 ## Branch & PR Workflow
 
-- Branch off `master`; PRs target `master`.
-- No CI/CD — build and test locally before opening a PR.
+- Branch from `main` for fork production changes; fork PRs target `main`.
+- Preserve `master` for upstream development history, separate from deployment.
+- Upstream PRs require separate authorization.
+- CI checks `main` and the custom-reaction feature branch. Test native behavior
+  before deployment; a successful compile is not device acceptance.
 - Squash `wip:` commits before merging.
 
 ## What Not to Do

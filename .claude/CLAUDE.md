@@ -33,7 +33,10 @@ After editing `@Entity` classes in `lib/database/io/`:
 - Line length: 120 chars
 
 ## Testing
-No automated test suite. Verify changes by running the target platform.
+CI runs focused custom-reaction tests, artifact-verifier tests and Android
+candidate builds. Verify native behavior on the target platform as well.
 
 ## Branches
-Branch off `master`; PRs target `master`. No CI/CD.
+Use `main` as this fork's production base. Preserve `master` for upstream
+development history; it is not the deployment source. Fork changes branch from
+and target `main`. Upstream PRs require separate authorization.
