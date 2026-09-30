@@ -5,6 +5,7 @@ import 'package:bluebubbles/app/state/message_state.dart';
 import 'package:bluebubbles/app/state/chat_state_scope.dart';
 import 'package:bluebubbles/app/state/message_state_scope.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_clipper.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_icon.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/shared/message_error_helper.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -12,7 +13,6 @@ import 'package:bluebubbles/services/services.dart';
 import 'package:defer_pointer/defer_pointer.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 
 class ReactionWidget extends StatefulWidget {
@@ -181,7 +181,7 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
               child: Center(
                 child: Builder(builder: (context) {
                   final text = Text(
-                    ReactionTypes.reactionToEmoji[reactionType] ?? "X",
+                    ReactionTypes.displayEmoji(reactionType),
                     style: const TextStyle(fontSize: 15, fontFamily: 'Apple Color Emoji'),
                     textAlign: TextAlign.center,
                   );
@@ -236,17 +236,17 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
                       height: iosSize * 0.8,
                       child: Center(
                           child: Padding(
-                        padding:
-                            const EdgeInsets.all(6.5).add(EdgeInsets.only(right: reactionType == "emphasize" ? 1 : 0)),
-                        child: SvgPicture.asset(
-                          'assets/reactions/$reactionType-black.svg',
-                          colorFilter: ColorFilter.mode(
-                              reactionType == "love"
-                                  ? Colors.pink
-                                  : (reactionIsFromMe
-                                      ? context.theme.colorScheme.onPrimary
-                                      : context.theme.colorScheme.onSurfaceVariant),
-                              BlendMode.srcIn),
+                        padding: ReactionTypes.isClassic(reactionType)
+                            ? const EdgeInsets.all(6.5).add(EdgeInsets.only(right: reactionType == "emphasize" ? 1 : 0))
+                            : EdgeInsets.zero,
+                        child: ReactionIcon(
+                          type: reactionType,
+                          classicAsSvg: true,
+                          color: reactionType == "love"
+                              ? Colors.pink
+                              : (reactionIsFromMe
+                                  ? context.theme.colorScheme.onPrimary
+                                  : context.theme.colorScheme.onSurfaceVariant),
                         ),
                       )),
                     ));
@@ -341,7 +341,7 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
         child: Center(
           child: Builder(builder: (ctx) {
             final text = Text(
-              ReactionTypes.reactionToEmoji[rType] ?? "X",
+              ReactionTypes.displayEmoji(rType),
               style: const TextStyle(fontSize: 15, fontFamily: 'Apple Color Emoji'),
               textAlign: TextAlign.center,
             );
@@ -406,17 +406,17 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
                 height: iosSize * 0.8,
                 child: Center(
                   child: Padding(
-                    padding: const EdgeInsets.all(6.5).add(EdgeInsets.only(right: rType == "emphasize" ? 1 : 0)),
-                    child: SvgPicture.asset(
-                      'assets/reactions/$rType-black.svg',
-                      colorFilter: ColorFilter.mode(
-                        rType == "love"
-                            ? Colors.pink
-                            : (isFromMe
-                                ? context.theme.colorScheme.onPrimary
-                                : context.theme.colorScheme.onSurfaceVariant),
-                        BlendMode.srcIn,
-                      ),
+                    padding: ReactionTypes.isClassic(rType)
+                        ? const EdgeInsets.all(6.5).add(EdgeInsets.only(right: rType == "emphasize" ? 1 : 0))
+                        : EdgeInsets.zero,
+                    child: ReactionIcon(
+                      type: rType,
+                      classicAsSvg: true,
+                      color: rType == "love"
+                          ? Colors.pink
+                          : (isFromMe
+                              ? context.theme.colorScheme.onPrimary
+                              : context.theme.colorScheme.onSurfaceVariant),
                     ),
                   ),
                 ),

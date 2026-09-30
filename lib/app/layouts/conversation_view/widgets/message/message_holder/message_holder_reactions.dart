@@ -36,9 +36,7 @@ class ReactionObserver extends StatelessWidget {
       // Directly observe MessageState for all reactive data
       final isFromMe = state.isFromMe.value;
       final associatedMessages = state.associatedMessages;
-      final reactions = associatedMessages
-          .where((e) => ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")))
-          .toList();
+      final reactions = associatedMessages.where((e) => ReactionTypes.isReaction(e.associatedMessageType)).toList();
       final reactionList = messageParts.length == 1 ? reactions : reactionsForPart(part.part, reactions).toList();
 
       return Positioned(
@@ -110,7 +108,7 @@ class ReactionSpacing extends StatelessWidget {
       // Directly observe MessageState associatedMessages for reactivity
       final associatedMessages = state.associatedMessages;
       final reactions = associatedMessages
-          .where((e) => ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")))
+          .where((e) => ReactionTypes.isReaction(e.associatedMessageType))
           .cast<Message>()
           .toList();
       // A gallery part can bundle several originally-separate message parts

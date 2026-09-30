@@ -9,6 +9,7 @@ Pure functions, no state or service dependencies.
 | `string_helpers.dart` | `randomString(n)` — generates n-char alphanumeric string (used for tempGuids); `sanitizeString()` strips U+FFFC; `sanitizeFileName()` / `hasReservedFileNameChars()` — make a foreign string safe as a file name (always run IDs/names through this before building a path); `isNullOrEmptyString()`; `parseLinks()` — extracts URLs via regex |
 | `date_helpers.dart` | `buildDate(DateTime, {forceYearWhenOlderThan})` — human-relative timestamps ("Just Now", "5 min", "Yesterday", "Mon 4:30") respecting 24-hour setting and chat skin |
 | `message_helper.dart` | `MessageHelper.bulkAddMessages()` — offloads bulk message insertion to isolate via `MessageInterface`; reports progress via callback |
+| `reaction_type.dart` | Pure classic/custom tapback validation, server normalization and preview formatting; custom graphemes persist in the existing message type field |
 | `contact_helpers.dart` | Phone number formatting via `dlibphonenumber`; locale-aware country codes; email detection |
 | `misc_helpers.dart` | `isNullOrEmpty(dynamic)` — null/blank/empty-collection check; `isNullOrZero()`; `mergeTopLevelDicts()` |
 

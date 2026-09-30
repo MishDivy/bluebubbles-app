@@ -188,7 +188,7 @@ class Message {
       associatedMessageGuid: json["associatedMessageGuid"]?.toString().replaceAll("bp:", "").split("/").last,
       associatedMessagePart: json["associatedMessagePart"] ??
           int.tryParse(json["associatedMessageGuid"].toString().replaceAll("p:", "").split("/").first),
-      associatedMessageType: json["associatedMessageType"],
+      associatedMessageType: ReactionTypes.fromServer(json["associatedMessageType"], json["associatedMessageEmoji"]),
       expressiveSendStyleId: json["expressiveSendStyleId"],
       handle: json['handle'] != null ? Handle.fromMap(json['handle']) : null,
       hasAttachments: attachments.isNotEmpty || json['hasAttachments'] == true,
@@ -375,9 +375,8 @@ class Message {
   List<Attachment> get previewAttachments =>
       attachments.where((e) => e != null && e.mimeType == null).cast<Attachment>().toList();
 
-  List<Message> get reactions => associatedMessages
-      .where((item) => ReactionTypes.toList().contains(item.associatedMessageType?.replaceAll("-", "")))
-      .toList();
+  List<Message> get reactions =>
+      associatedMessages.where((item) => ReactionTypes.isReaction(item.associatedMessageType)).toList();
 
   MessageStatusIndicator get indicatorToShow {
     if (!isFromMe!) return MessageStatusIndicator.NONE;

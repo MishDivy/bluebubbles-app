@@ -1,85 +1,38 @@
 import 'package:bluebubbles/database/models.dart' hide Entity;
-import 'package:flutter/foundation.dart';
+import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 
-class ReactionTypes {
-  // ignore: non_constant_identifier_names
-  static const String LOVE = "love";
-  // ignore: non_constant_identifier_names
-  static const String LIKE = "like";
-  // ignore: non_constant_identifier_names
-  static const String DISLIKE = "dislike";
-  // ignore: non_constant_identifier_names
-  static const String LAUGH = "laugh";
-  // ignore: non_constant_identifier_names
-  static const String EMPHASIZE = "emphasize";
-  // ignore: non_constant_identifier_names
-  static const String QUESTION = "question";
+export 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 
-  static List<String> toList() {
-    return [
-      LOVE,
-      LIKE,
-      DISLIKE,
-      LAUGH,
-      EMPHASIZE,
-      QUESTION,
-    ];
-  }
-
-  static final Map<String, String> reactionToVerb = {
-    LOVE: "loved",
-    LIKE: "liked",
-    DISLIKE: "disliked",
-    LAUGH: "laughed at",
-    EMPHASIZE: "emphasized",
-    QUESTION: "questioned",
-    "-$LOVE": "removed a heart from",
-    "-$LIKE": "removed a like from",
-    "-$DISLIKE": "removed a dislike from",
-    "-$LAUGH": "removed a laugh from",
-    "-$EMPHASIZE": "removed an exclamation from",
-    "-$QUESTION": "removed a question mark from",
-  };
-
-  static final Map<String, String> reactionToEmoji = {
-    LOVE: "❤️",
-    LIKE: "👍",
-    DISLIKE: "👎",
-    LAUGH: "😂",
-    EMPHASIZE: "❗",
-    QUESTION: "❓",
-  };
-
-  static final Map<String, String> emojiToReaction = {
-    "❤️": LOVE,
-    "👍": LIKE,
-    "👎": DISLIKE,
-    "😂": LAUGH,
-    "❗": EMPHASIZE,
-    "❓": QUESTION,
-  };
-}
-
+/// Latest tapback per actor and message part, including removals. Work on a copy
+/// so sorting and de-duplication never mutate an observable associated list.
 List<Message> getUniqueReactionMessages(List<Message> messages) {
-  List<int> handleCache = [];
-  List<Message> output = [];
-  // Sort the messages, putting the latest at the top
-  final ids = messages.map((e) => e.guid).toSet();
-  messages.retainWhere((element) => ids.remove(element.guid));
-  messages.sort(Message.sort);
-  // Iterate over the messages and insert the latest reaction for each user
-  for (Message msg in messages) {
-    int cache = msg.isFromMe! ? 0 : msg.handleId ?? 0;
-    if (!handleCache.contains(cache) && !kIsWeb) {
-      handleCache.add(cache);
-      // Only add the reaction if it's not a "negative"
-      if (!msg.associatedMessageType!.startsWith("-")) {
-        output.add(msg);
-      }
-    } else if (kIsWeb && !msg.associatedMessageType!.startsWith("-")) {
-      output.add(msg);
-    }
-  }
-
-  return output;
+  final seenGuids = <String>{};
+  final sorted = messages.toList()
+    ..sort((a, b) {
+      final byDate = (b.dateCreated ?? DateTime.fromMillisecondsSinceEpoch(0)).compareTo(
+        a.dateCreated ?? DateTime.fromMillisecondsSinceEpoch(0),
+      );
+      if (byDate != 0) return byDate;
+      // chat.db can give consecutive add/remove events the same timestamp.
+      final byRow = (b.originalROWID ?? b.id ?? 0).compareTo(a.originalROWID ?? a.id ?? 0);
+      if (byRow != 0) return byRow;
+      // Prefer the hydrated echo if a partial and full payload race for a GUID.
+      return (ReactionTypes.isCustom(b.associatedMessageType) ? 1 : 0).compareTo(
+        ReactionTypes.isCustom(a.associatedMessageType) ? 1 : 0,
+      );
+    });
+  final actors = <String>{};
+  return sorted.where((msg) {
+    if (msg.guid != null && !seenGuids.add(msg.guid!)) return false;
+    final handle = msg.handleId != null && msg.handleId != 0 ? msg.handleId : msg.handleRelation.targetId;
+    final actor = msg.isFromMe == true
+        ? 'me'
+        : handle != 0
+        ? 'handle:$handle'
+        : 'unknown:${msg.guid ?? identityHashCode(msg)}';
+    final key = '${msg.associatedMessageGuid}:${msg.associatedMessagePart ?? 0}:$actor';
+    return ReactionTypes.isReaction(msg.associatedMessageType) &&
+        actors.add(key) &&
+        !ReactionTypes.isRemoval(msg.associatedMessageType);
+  }).toList();
 }

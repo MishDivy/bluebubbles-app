@@ -13,6 +13,7 @@ import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup_action_context.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/reaction_picker_clipper.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/widgets/reaction_details.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/widgets/custom_reaction_picker.dart';
 import 'package:bluebubbles/app/layouts/findmy/findmy_pin_clipper.dart';
 import 'package:bluebubbles/app/wrappers/bb_app_bar.dart';
 import 'package:bluebubbles/app/wrappers/bb_scaffold.dart';
@@ -146,7 +147,7 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       currentlySelectedReaction = null;
       reactions = getUniqueReactionMessages(message.associatedMessages
           .where((e) =>
-              ReactionTypes.toList().contains(e.associatedMessageType?.replaceAll("-", "")) &&
+              ReactionTypes.isReaction(e.associatedMessageType) &&
               (e.associatedMessagePart ?? 0) == part.part)
           .toList());
       final self = reactions.firstWhereOrNull((e) => e.isFromMe!)?.associatedMessageType;
@@ -184,6 +185,10 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
 
   @override
   Widget build(BuildContext context) {
+    final reactionOptions = [
+      ...ReactionTypes.toList(),
+      if (SettingsSvc.serverDetails.supportsCustomEmojiReactions) '+',
+    ];
     // Decide whether the tapback row needs to wrap to a second line by comparing its actual
     // content width (derived from the fixed per-item padding/icon sizes used below) against the
     // real horizontal space available at the picker's anchor position, rather than guessing from
@@ -196,8 +201,9 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
         : screenWidth - (widget.childPosition.dx + 10) - reactionPickerEdgeMargin;
     final double reactionItemWidth = iOS ? 47.0 : 44.0; // icon/emoji + its fixed padding, see item build below
     // + container padding
-    final double reactionRowContentWidth = reactionItemWidth * ReactionTypes.toList().length + 10;
-    bool narrowScreen = reactionRowContentWidth > reactionPickerAvailableWidth;
+    final itemsPerRow = max(1, min(reactionOptions.length, (reactionPickerAvailableWidth - 10) ~/ reactionItemWidth));
+    final reactionRows = (reactionOptions.length / itemsPerRow).ceil();
+    final narrowScreen = reactionRows > 1;
 
     return Theme(
       data: context.theme.copyWith(
@@ -360,13 +366,13 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                                         .lightenOrDarken(iOS ? 0 : 10),
                                     child: Column(
                                         mainAxisSize: MainAxisSize.min,
-                                        children: List.generate(narrowScreen ? 2 : 1, (index) {
+                                        children: List.generate(reactionRows, (index) {
                                           return Row(
                                             mainAxisSize: MainAxisSize.min,
                                             mainAxisAlignment: MainAxisAlignment.start,
-                                            children: ReactionTypes.toList()
-                                                .slice(narrowScreen && index == 1 ? 3 : 0,
-                                                    narrowScreen && index == 0 ? 3 : null)
+                                            children: reactionOptions
+                                                .slice(index * itemsPerRow,
+                                                    min(reactionOptions.length, (index + 1) * itemsPerRow))
                                                 .map((e) {
                                               return Padding(
                                                 padding: iOS
@@ -382,7 +388,15 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                                                     height: iOS ? 35 : null,
                                                     child: InkWell(
                                                       borderRadius: BorderRadius.circular(20),
-                                                      onTap: () {
+                                                      onTap: () async {
+                                                        if (e == '+') {
+                                                          final choice = await showCustomReactionPicker(context,
+                                                              currentReaction: selfReaction);
+                                                          if (!mounted || choice == null) return;
+                                                          widget.sendTapback(choice, part.part);
+                                                          popDetails();
+                                                          return;
+                                                        }
                                                         if (currentlySelectedReaction == e) {
                                                           currentlySelectedReaction = null;
                                                         } else {
@@ -396,7 +410,10 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
                                                       child: Padding(
                                                         padding: const EdgeInsets.all(6.5)
                                                             .add(EdgeInsets.only(right: e == "emphasize" ? 2.5 : 0)),
-                                                        child: iOS
+                                                        child: e == '+'
+                                                            ? Icon(Icons.add, size: 20,
+                                                                color: context.theme.colorScheme.outline)
+                                                            : iOS
                                                             ? SvgPicture.asset(
                                                                 'assets/reactions/$e-black.svg',
                                                                 colorFilter: ColorFilter.mode(

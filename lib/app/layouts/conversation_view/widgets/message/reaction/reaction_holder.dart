@@ -107,7 +107,8 @@ class _ReactionHolderState extends State<ReactionHolder> {
     final listB = b.toList();
     if (listA.length != listB.length) return false;
     for (int i = 0; i < listA.length; i++) {
-      if (listA[i].guid != listB[i].guid) return false;
+      if (listA[i].guid != listB[i].guid || listA[i].associatedMessageType != listB[i].associatedMessageType)
+        return false;
     }
     return true;
   }

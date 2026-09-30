@@ -16,6 +16,7 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 | `actions/navigation_actions.dart` | Navigation actions (reply/thread/DM/forward/new conversation) |
 | `actions/message_actions.dart` | Message lifecycle actions (edit/unsend/delete/bookmark/remind/info/etc.) |
 | `widgets/reaction_details.dart` | Reactions preview widget rendered at top of popup |
+| `widgets/custom_reaction_picker.dart` | Emoji picker and removal control; available only when the server explicitly advertises connected-helper support |
 
 ## MessagePopupActionContext Contract
 

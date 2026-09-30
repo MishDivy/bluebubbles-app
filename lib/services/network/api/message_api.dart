@@ -1,4 +1,5 @@
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 import 'package:bluebubbles/services/network/api/base_api.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:dio/dio.dart';
@@ -25,7 +26,11 @@ class MessageApi {
     if (before != null) params['before'] = before.millisecondsSinceEpoch;
     return _svc.runApiGuarded(() async {
       final response = await _svc.dio.get(
-        "${_svc.apiRoot}/message/count${updated ? "/updated" : onlyMe ? "/me" : ""}",
+        "${_svc.apiRoot}/message/count${updated
+            ? "/updated"
+            : onlyMe
+            ? "/me"
+            : ""}",
         queryParameters: _svc.buildQueryParams(params),
         cancelToken: cancelToken,
       );
@@ -265,7 +270,26 @@ class MessageApi {
     int? partIndex,
     CancelToken? cancelToken,
   }) async {
+    if (!ReactionTypes.isClassic(reaction) && !ReactionTypes.isCustom(reaction)) {
+      throw ArgumentError.value(reaction, 'reaction', 'Expected a classic tapback or single emoji');
+    }
     return _svc.runApiGuarded(() async {
+      if (ReactionTypes.isCustom(reaction)) {
+        // Sends run inside GlobalIsolate, whose bootstrap cache deliberately
+        // has no negotiated capability. Check the currently connected helper
+        // here instead of relying on a main-isolate or version-only cache.
+        final info = await _svc.dio.get(
+          '${_svc.apiRoot}/server/info',
+          queryParameters: _svc.buildQueryParams(),
+          cancelToken: cancelToken,
+        );
+        await _svc.returnSuccessOrError(info);
+        final data = info.data is Map ? info.data['data'] : null;
+        final capabilities = data is Map ? data['privateApiCapabilities'] : null;
+        if (capabilities is! Map || capabilities['customEmojiReactions'] != true) {
+          throw UnsupportedError('This server has not enabled custom emoji reactions');
+        }
+      }
       final response = await _svc.dio.post(
         "${_svc.apiRoot}/message/react",
         queryParameters: _svc.buildQueryParams(),

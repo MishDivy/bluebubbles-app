@@ -166,6 +166,8 @@ class SettingsService {
         'macOSMinorVersion': minorVersion ?? 0,
         'serverVersion': serverVersion ?? "0.0.0",
         'serverVersionCode': versionCode,
+        'customEmojiReactions': response.data['data']['privateApiCapabilities'] is Map &&
+            response.data['data']['privateApiCapabilities']['customEmojiReactions'] == true,
         'recommendPrivateApi': settings.finishedSetup.value &&
             settings.reachedConversationList.value &&
             !settings.enablePrivateAPI.value &&
@@ -194,6 +196,7 @@ class SettingsService {
       macOSMinorVersion: detailsDict['macOSMinorVersion'] as int,
       serverVersion: detailsDict['serverVersion'] as String,
       serverVersionCode: detailsDict['serverVersionCode'] as int,
+      customEmojiReactions: detailsDict['customEmojiReactions'] == true,
     );
     _serverDetails.value = details;
 

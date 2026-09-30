@@ -77,7 +77,10 @@ class Attachment {
       totalBytes: json['totalBytes'] is int ? json['totalBytes'] : 0,
       height: json["height"] ?? 0,
       width: json["width"] ?? 0,
-      metadata: metadata is String ? null : metadata,
+      metadata: {
+        if (metadata is Map) ...metadata.cast<String, dynamic>(),
+        if (json['isSticker'] == true) 'isSticker': true,
+      },
       exif: exif is String ? null : exif,
       hasLivePhoto: json["hasLivePhoto"] ?? false,
     );

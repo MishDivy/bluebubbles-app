@@ -9,6 +9,7 @@ class ServerDetails {
   final bool? privateApiEnabled;
   final String? iCloudAccount;
   final String? proxyService;
+  final bool customEmojiReactions;
 
   const ServerDetails({
     required this.macOSVersion,
@@ -18,16 +19,21 @@ class ServerDetails {
     this.privateApiEnabled,
     this.iCloudAccount,
     this.proxyService,
+    this.customEmojiReactions = false,
   });
 
   const ServerDetails.empty()
-      : macOSVersion = 0,
-        macOSMinorVersion = 0,
-        serverVersion = "",
-        serverVersionCode = 0,
-        privateApiEnabled = null,
-        iCloudAccount = null,
-        proxyService = null;
+    : macOSVersion = 0,
+      macOSMinorVersion = 0,
+      serverVersion = "",
+      serverVersionCode = 0,
+      privateApiEnabled = null,
+      iCloudAccount = null,
+      proxyService = null,
+      customEmojiReactions = false;
+
+  /// Requires an explicit capability negotiated with the connected helper.
+  bool get supportsCustomEmojiReactions => customEmojiReactions;
 
   // ---------------------------------------------------------------------------
   // Server feature helpers

@@ -10,7 +10,7 @@ Pure helper functions and small utility classes for the UI layer. No service dep
 | `theme_helpers.dart` | `HexColor` (hex string → `Color`), `BubbleColors` theme extension, desktop window effects (Mica/acrylic) |
 | `message_widget_helpers.dart` | `buildMessageSpans()` — rich text rendering with emoji scaling, mention detection, and styled spans for message bubbles |
 | `attributed_body_helpers.dart` | Extracts audio transcripts from `AttributedBody` rich text; parses `Run` objects by part number |
-| `reaction_helpers.dart` | `ReactionTypes` — string constants for iMessage tapbacks (`love`, `like`, `dislike`, `laugh`, `emphasize`, `question`) and their verb forms |
+| `reaction_helpers.dart` | Re-exports `ReactionTypes`; selects the latest tapback per actor and message part, including custom emoji changes and removals |
 | `facetime_helpers.dart` | `showFaceTimeOverlay()` / `hideFaceTimeOverlay()` — incoming FaceTime call UI overlay |
 | `oauth_helpers.dart` | Google OAuth flow; platform-branched: `GoogleSignIn` on Android, `DesktopWebviewAuth` on Desktop |
 | `async_task.dart` | Lightweight async task wrapper for fire-and-forget UI work |

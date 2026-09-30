@@ -18,7 +18,7 @@ class _StickerHolderState extends State<StickerHolder> {
 
   bool _visible = true;
   bool _dismissed = false;
-  final Map<String, Attachment> _stickerPaths = {};
+  final Map<String, String> _stickerPaths = {};
 
   @override
   void initState() {
@@ -33,14 +33,22 @@ class _StickerHolderState extends State<StickerHolder> {
         if (_stickerPaths.containsKey(pathName)) continue;
 
         if (await FileSystemEntity.type(pathName) == FileSystemEntityType.notFound) {
-          AttachmentDownloader.startDownload(attachment, onComplete: (_) {
-            if (mounted) setState(() => _stickerPaths[pathName] = attachment);
-          });
+          AttachmentDownloader.startDownload(
+            attachment,
+            onComplete: (_) async {
+              await _prepareSticker(attachment);
+            },
+          );
         } else {
-          if (mounted) setState(() => _stickerPaths[pathName] = attachment);
+          await _prepareSticker(attachment);
         }
       }
     }
+  }
+
+  Future<void> _prepareSticker(Attachment attachment) async {
+    final compatible = await AttachmentsSvc.ensureImageCompatibility(attachment);
+    if (mounted && compatible != null) setState(() => _stickerPaths[attachment.path] = compatible);
   }
 
   @override
@@ -63,10 +71,10 @@ class _StickerHolderState extends State<StickerHolder> {
             runSpacing: 4,
             children: _stickerPaths.values
                 .map(
-                  (attachment) => ConstrainedBox(
+                  (path) => ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 100, maxHeight: 100),
                     child: Image.file(
-                      File(attachment.path),
+                      File(path),
                       gaplessPlayback: true,
                       filterQuality: FilterQuality.none,
                       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {

@@ -1,0 +1,36 @@
+name: Custom reaction checks
+
+on:
+  push:
+    branches: [feature/custom-reactions]
+  pull_request:
+    paths:
+      - 'lib/**'
+      - 'test/**'
+      - 'pubspec.*'
+      - '.github/workflows/custom-reactions.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: custom-reactions-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: ./.github/actions/setup-flutter
+        with:
+          flutter-version: '3.44.6'
+          fvm-version: '4.1.2'
+      - name: Empty optional API key
+        run: echo 'KLIPY_API_KEY=' > .env
+      - name: Offline reaction regression tests
+        run: fvm flutter test --no-pub test/custom_reactions_test.dart
+      - name: Analyze
+        run: fvm flutter analyze --no-pub --no-fatal-infos

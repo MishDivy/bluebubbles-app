@@ -36,6 +36,7 @@ class ServerInterface {
       macOSMinorVersion: response['macOSMinorVersion'] as int,
       serverVersion: response['serverVersion'] as String,
       serverVersionCode: response['serverVersionCode'] as int,
+      customEmojiReactions: response['customEmojiReactions'] == true,
     );
   }
 }

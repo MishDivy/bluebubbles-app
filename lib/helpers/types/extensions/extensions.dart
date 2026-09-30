@@ -401,7 +401,7 @@ extension MessageNotificationExtension on Message {
         Message? associatedMessage = Message.findOne(guid: associatedMessageGuid);
         if (associatedMessage != null) {
           // grab the verb we'll use from the reactionToVerb map
-          String? verb = ReactionTypes.reactionToVerb[associatedMessageType];
+          final verb = ReactionTypes.verb(associatedMessageType);
           // we need to check balloonBundleId first because for some reason
           // game pigeon messages have the text "�"
           if (associatedMessage.isInteractive) {
@@ -454,7 +454,7 @@ extension MessageNotificationExtension on Message {
         // (or none of the above conditions about it are true)
         // then we should fallback to unparsed reaction messages
         Logger.info("Couldn't fetch associated message for message: $guid");
-        return "$reactionSender $text";
+        return "$reactionSender ${ReactionTypes.verb(associatedMessageType)} a message";
       } else {
         // It's all other message types
         return sender + fullText;

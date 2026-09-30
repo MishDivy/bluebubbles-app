@@ -2,12 +2,12 @@ import 'dart:math';
 import 'dart:ui';
 
 import 'package:bluebubbles/app/components/avatars/contact_avatar_widget.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_icon.dart';
 import 'package:bluebubbles/app/wrappers/theme_switcher.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_svg/svg.dart';
 import 'package:get/get.dart';
 
 class ReactionDetails extends StatelessWidget {
@@ -91,26 +91,25 @@ class ReactionDetails extends StatelessWidget {
                           ],
                         ),
                         child: Padding(
-                          padding: SettingsSvc.settings.skin.value == Skins.iOS
+                          padding: SettingsSvc.settings.skin.value == Skins.iOS &&
+                                  ReactionTypes.isClassic(message.associatedMessageType)
                               ? const EdgeInsets.only(top: 8.0, left: 7.0, right: 7.0, bottom: 7.0)
                                   .add(EdgeInsets.only(right: message.associatedMessageType == "emphasize" ? 1 : 0))
                               : EdgeInsets.zero,
                           child: SettingsSvc.settings.skin.value == Skins.iOS
-                              ? SvgPicture.asset(
-                                  'assets/reactions/${message.associatedMessageType}-black.svg',
-                                  colorFilter: ColorFilter.mode(
-                                    message.associatedMessageType == "love"
-                                        ? Colors.pink
-                                        : message.isFromMe!
-                                            ? context.theme.colorScheme.onPrimary
-                                            : context.theme.colorScheme.onSurfaceVariant,
-                                    BlendMode.srcIn,
-                                  ),
+                              ? ReactionIcon(
+                                  type: message.associatedMessageType,
+                                  classicAsSvg: true,
+                                  color: message.associatedMessageType == "love"
+                                      ? Colors.pink
+                                      : message.isFromMe!
+                                          ? context.theme.colorScheme.onPrimary
+                                          : context.theme.colorScheme.onSurfaceVariant,
                                 )
                               : Center(
                                   child: Builder(builder: (context) {
                                     final text = Text(
-                                      ReactionTypes.reactionToEmoji[message.associatedMessageType] ?? "X",
+                                      ReactionTypes.displayEmoji(message.associatedMessageType),
                                       style: const TextStyle(fontSize: 18, fontFamily: 'Apple Color Emoji'),
                                       textAlign: TextAlign.center,
                                     );

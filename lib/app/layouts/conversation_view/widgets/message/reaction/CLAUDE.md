@@ -9,10 +9,11 @@ Renders the tapback emoji row that appears above or below a message bubble.
 | `reaction.dart` | `ReactionWidget` — single tapback emoji with skin-specific styling |
 | `reaction_holder.dart` | Horizontal row container for all reactions on a message part |
 | `reaction_clipper.dart` | `CustomClipper` for the pill-shaped reaction bubble |
+| `reaction_icon.dart` | Classic SVG or full custom emoji text, with a safe unknown-payload fallback |
 
 ## Data Source
 
-Reactions come from `MessageState.associatedMessages` (an `RxList<Message>`). Each associated message with `associatedMessageType` matching a tapback type (e.g., `"love"`, `"thumbsup"`) is a reaction.
+Reactions come from `MessageState.associatedMessages` (an `RxList<Message>`). Filter with `ReactionTypes.isReaction`: classic tapbacks, full custom emoji graphemes, and missing-payload emoji events are accepted. Sticker placement and unknown numeric events remain distinct.
 
 Use `ReactionTypes` string constants (from `lib/helpers/ui/`) — never hardcode reaction type strings.
 

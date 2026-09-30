@@ -621,13 +621,12 @@ class AttachmentsService extends GetxService {
         // source Orientation tag onto the output would make Flutter's decoder
         // rotate a second time. This was the original orientation bug.
         //
-        // JPEG, not PNG: camera photos have no alpha to preserve, and PNG
-        // costs a full-resolution decode on every draw (see
-        // Attachment.convertedExtension).
+        // Photos use JPEG for scaled decoding; explicit stickers use PNG to
+        // retain transparency (see Attachment.convertedExtension).
         final file = await FlutterImageCompress.compressAndGetFile(
           filePath,
           convertedPath,
-          format: CompressFormat.jpeg,
+          format: attachment.isSticker ? CompressFormat.png : CompressFormat.jpeg,
           keepExif: false,
           quality: 90,
         );

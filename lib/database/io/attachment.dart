@@ -99,7 +99,10 @@ class Attachment {
       totalBytes: json['totalBytes'] is int ? json['totalBytes'] : 0,
       height: json["height"] ?? 0,
       width: json["width"] ?? 0,
-      metadata: metadata is String ? null : metadata,
+      metadata: {
+        if (metadata is Map) ...metadata.cast<String, dynamic>(),
+        if (json['isSticker'] == true) 'isSticker': true,
+      },
       exif: exif is String ? null : exif,
       hasLivePhoto: json["hasLivePhoto"] ?? false,
       isDownloaded: json["isDownloaded"] ?? false,
@@ -296,12 +299,15 @@ class Attachment {
   /// Extension used for the on-disk conversion of formats Flutter can't decode
   /// natively.
   ///
-  /// HEIC becomes JPEG: camera photos have no alpha, and PNG has no scaled
+  /// HEIC photos become JPEG. Explicit stickers retain alpha in PNG.
+  /// PNG has no scaled
   /// decode path (`SkPngCodec` doesn't implement `onGetScaledDimensions`), so a
   /// 12 MP conversion fully inflates to ~48 MB RGBA before downscaling *every
   /// time* it is drawn into a 200 pt bubble. JPEG at least gets DCT-domain 1/8
   /// scaling. TIFF stays PNG — it may be a scan with alpha.
-  String get convertedExtension => (mimeType?.contains('image/hei') ?? false) ? "jpg" : "png";
+  bool get isSticker => metadata?['isSticker'] == true || message.target?.isSticker == true;
+
+  String get convertedExtension => (mimeType?.contains('image/hei') ?? false) && !isSticker ? "jpg" : "png";
 
   String get convertedPath => "$path.$convertedExtension";
 
