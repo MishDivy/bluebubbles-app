@@ -28,9 +28,9 @@ the repository's default branch; feature-branch pushes work independently.
 The `ORG_GRADLE_PROJECT_divyUnsignedCandidate=true` environment variable enables
 unsigned builds only for the `divy` release flavor. Normal `divy` release builds
 still require the release signing configuration. The artifact verifier rejects
-the wrong package or build number, debuggable builds, other ABIs and existing
-signatures. It aligns the APK with 16 KiB native-library pages before recording
-the checksum. Local signing must preserve this alignment.
+the wrong package or build number, debuggable builds, other ABIs, valid existing
+signatures and v1 signing material. It aligns the APK with 16 KiB native-library
+pages before recording the checksum. Local signing must preserve this alignment.
 
 ## Local signing of a CI candidate
 

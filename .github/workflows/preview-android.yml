@@ -46,6 +46,20 @@ jobs:
         run: |
           fvm flutter test --no-pub test/custom_reactions_test.dart
           python3 -m unittest discover -s scripts/tests -p 'test_preview_artifact.py'
+      - name: Confirm normal preview releases require a signing key
+        env:
+          ORG_GRADLE_PROJECT_divyUnsignedCandidate: 'false'
+        run: |
+          test ! -e android/key.properties
+          mkdir -p build
+          if fvm flutter build apk --release --flavor divy --target-platform android-arm64 --no-pub --build-number 1 > build/preview-signing-check.log 2>&1; then
+            echo 'Normal preview release unexpectedly accepted a missing signing key'
+            exit 1
+          fi
+          if ! grep -F 'Preview release requires a complete release signing key' build/preview-signing-check.log; then
+            cat build/preview-signing-check.log
+            exit 1
+          fi
       - name: Compile unsigned ARM64 release candidate
         env:
           REQUESTED_BUILD_NUMBER: ${{ inputs.build_number }}
@@ -55,17 +69,6 @@ jobs:
           [[ "$candidate_number" =~ ^[1-9][0-9]*$ ]] && (( candidate_number <= 2100000000 ))
           echo "PREVIEW_BUILD_NUMBER=$candidate_number" >> "$GITHUB_ENV"
           fvm flutter build apk --release --flavor divy --target-platform android-arm64 --no-pub --build-number "$candidate_number"
-      - name: Confirm normal preview releases require a signing key
-        working-directory: android
-        env:
-          ORG_GRADLE_PROJECT_divyUnsignedCandidate: 'false'
-        run: |
-          test ! -e key.properties
-          if ./gradlew :app:validateSigningDivyRelease --console=plain > ../build/preview-signing-check.log 2>&1; then
-            echo 'Normal preview release unexpectedly accepted a missing signing key'
-            exit 1
-          fi
-          grep -E 'Keystore file not set for signing config release|SigningConfig.*release.*missing required property.*storeFile' ../build/preview-signing-check.log
       - name: Verify candidate identity and write provenance
         env:
           BUILD_TOOLS_VERSION: '36.0.0'

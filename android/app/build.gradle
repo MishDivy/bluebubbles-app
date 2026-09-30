@@ -165,6 +165,18 @@ android {
     }
 }
 
+tasks.matching { it.name == 'preDivyReleaseBuild' }.configureEach {
+    doFirst {
+        if (!divyUnsignedCandidate) {
+            def releaseKey = android.signingConfigs.release
+            if (!releaseKey.storeFile?.isFile() || !releaseKey.storePassword ||
+                !releaseKey.keyAlias || !releaseKey.keyPassword) {
+                throw new GradleException('Preview release requires a complete release signing key')
+            }
+        }
+    }
+}
+
 flutter {
     source '../..'
 }
