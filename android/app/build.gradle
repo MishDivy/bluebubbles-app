@@ -143,7 +143,9 @@ android {
 
     buildTypes {
         release {
-            productFlavors.divy.signingConfig = divyUnsignedCandidate ? null : signingConfigs.release
+            if (!divyUnsignedCandidate) {
+                productFlavors.divy.signingConfig signingConfigs.release
+            }
             productFlavors.joel.signingConfig signingConfigs.debug
             productFlavors.tanay.signingConfig signingConfigs.debug
             productFlavors.alpha.signingConfig signingConfigs.release
