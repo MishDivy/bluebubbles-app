@@ -23,11 +23,12 @@ source. The app keeps its existing package ID, display name and signing identity
 
 CI builds an unsigned ARM64 release APK and uploads it with `candidate.json` and
 `SHA256SUMS`. It runs on `main` and `feature/custom-reactions` and records the
-source commit and CI run. Its default build number is the workflow run number;
+source commit and CI run. The scoped `fix/sticker-previews` branch also runs these
+checks and can upload unsigned candidates. Its default build number is the workflow run number;
 manual dispatch can supply a positive override. Reserve published version codes so later candidates
 stay above the installed version. Pull request jobs build and verify but do not
 upload candidates. The workflow has no signing credentials and does not publish
-releases or install apps. Artifact uploads require this fork, one of those two
+releases or install apps. Artifact uploads require this fork, one of those three
 branches and a non-PR run. GitHub manual dispatch requires the workflow file on
 the repository's default branch; feature-branch pushes work independently.
 
@@ -102,6 +103,24 @@ them. Keep normal account setup and the official installation available.
    distributing it. Release builds must fail if the release key is unavailable.
 
 ## Downloads and updates
+
+### Sticker preview fix
+
+`fix/sticker-previews` keeps transparent and animated attachments on the native
+image renderer instead of making a still JPEG. The decoder checks actual file
+bytes for multiple frames; PNG palette alpha is covered as well. Explicit
+stickers bypass the JPEG path, including HEIC stickers. Opaque still photos keep
+their existing downsampling and EXIF orientation correction.
+
+The v2 preview cache path ignores older flattened JPEGs without clearing app
+data or changing original attachments. Existing preview cleanup covers both
+versions. There is no database schema change, new dependency or Mac update.
+Tests use synthetic PNG, APNG, GIF and WebP images; run `flutter test --no-pub`.
+Before promoting a signed update, verify inline playback and transparency on
+the Samsung, including old cached stickers, ordinary photos and fullscreen
+viewing. Automated decoder tests are not phone acceptance.
+
+### Published updates
 
 The preview's existing update checker reads only non-draft, non-prerelease
 releases in `MishDivy/bluebubbles-app` whose tags match the preview format above.

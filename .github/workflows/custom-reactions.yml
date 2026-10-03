@@ -2,7 +2,7 @@ name: Custom reaction checks
 
 on:
   push:
-    branches: [main, feature/custom-reactions]
+    branches: [main, feature/custom-reactions, fix/sticker-previews]
   pull_request:
     paths:
       - 'lib/**'
@@ -30,7 +30,7 @@ jobs:
           fvm-version: '4.1.2'
       - name: Empty optional API key
         run: echo 'KLIPY_API_KEY=' > .env
-      - name: Offline reaction regression tests
-        run: fvm flutter test --no-pub test/custom_reactions_test.dart
+      - name: Offline app regression tests
+        run: fvm flutter test --no-pub
       - name: Analyze
         run: fvm flutter analyze --no-pub --no-fatal-infos
