@@ -19,7 +19,7 @@ All are GetX singletons. Shorthand getters live in `lib/services/services.dart`.
 ## Other
 - `theme/themes_service.dart` (`ThemeSvc`) — theme switching, custom theme management, preset themes
 - `navigator/navigator_service.dart` (`NavigationSvc`) — GetX-based app routing; always use this over `Navigator.of(context)` directly
-- `attachments_service.dart` — tracks attachments and send progress; caches opaque still-image previews. Stickers, alpha and animation use the original file. Preview v2 paths exclude old flattened JPEG caches.
+- `attachments_service.dart` — tracks attachments and send progress; caches opaque still-image previews. Stickers, alpha and animation use the original file. Deliberate original-file decisions are cached by actual path for the session; decode failures remain retryable. Preview replacement/clear also invalidates these decisions. Preview v2 paths exclude old flattened JPEG caches.
 - `unifiedpush.dart` — push notification provider abstraction (UnifiedPush protocol)
 
 ## Key Separation Rule

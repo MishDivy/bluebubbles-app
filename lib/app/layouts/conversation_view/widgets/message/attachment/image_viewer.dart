@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bluebubbles/app/components/image_blur_canvas.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/live_photo_mixin.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/media_unavailable_placeholder.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -308,8 +309,12 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
       // Fallback: render the original file directly, used when preview
       // generation fails.
       Widget buildOriginalFallback() {
-        return Image.file(
-          File(file.path!),
+        return Image(
+          image: ResizeImage.resizeIfNeeded(
+            calculatedWidth,
+            null,
+            attachment.isSticker ? LoopingFileImage(File(file.path!)) : FileImage(File(file.path!)),
+          ),
           gaplessPlayback: true,
           filterQuality: FilterQuality.high,
           fit: BoxFit.contain,
@@ -317,7 +322,6 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
           // Commented out because it causes clipping issues
           // when an image exists in the same message as text.
           // height: displayHeight,
-          cacheWidth: calculatedWidth,
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
             if (wasSynchronouslyLoaded) return child;
             if (frame == null) return placeholder();
@@ -384,6 +388,8 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
       final knownPreview = AttachmentsSvc.knownPreviewPath(attachment);
       if (knownPreview != null) {
         imageWidget = buildPreview(knownPreview);
+      } else if (AttachmentsSvc.usesOriginalImage(attachment, actualPath: file.path)) {
+        imageWidget = buildOriginalFallback();
       } else {
         _previewPathFuture ??= AttachmentsSvc.getOrCreateImagePreview(attachment, actualPath: file.path);
         imageWidget = FutureBuilder<String?>(

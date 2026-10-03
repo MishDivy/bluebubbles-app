@@ -19,6 +19,7 @@ Barrel export: `models/models.dart`
 | `handle_audit_result.dart` | Developer Tools "Handle Auditing" scan result for a single handle missing `originalROWID`, plus remediation status |
 | `handle_lookup_key.dart` | Composite key (address + service) for handle deduplication |
 | `handle_sync_page.dart` | Pagination cursor for handle sync requests |
+| `image_preview_result.dart` | Created preview, deliberate original-file fallback, or retryable failure |
 | `location_attachment_data.dart` | Parsed location payload from a location message |
 | `message_receipt_info.dart` | Delivered/read receipt metadata for a message |
 | `message_reply_context.dart` | Context for a reply thread entry (parent GUID, part index) |

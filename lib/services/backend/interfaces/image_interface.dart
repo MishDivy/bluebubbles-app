@@ -1,5 +1,6 @@
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/env.dart';
+import 'package:bluebubbles/models/image_preview_result.dart';
 import 'package:bluebubbles/services/backend/actions/image_actions.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get_it/get_it.dart';
@@ -76,13 +77,20 @@ class ImageInterface {
     required String outputPath,
     required int maxDimension,
     required int quality,
+  }) async =>
+      await generatePreviewResult(path: path, outputPath: outputPath, maxDimension: maxDimension, quality: quality) ==
+      ImagePreviewResult.created;
+
+  static Future<ImagePreviewResult> generatePreviewResult({
+    required String path,
+    required String outputPath,
+    required int maxDimension,
+    required int quality,
   }) async {
     final input = {'path': path, 'outputPath': outputPath, 'maxDimension': maxDimension, 'quality': quality};
-
-    if (isIsolate) {
-      return await ImageActions.generatePreview(input);
-    } else {
-      return await GetIt.I<GlobalIsolate>().send<bool>(IsolateRequestType.generatePreview, input: input);
-    }
+    final result = isIsolate
+        ? await ImageActions.generatePreview(input)
+        : await GetIt.I<GlobalIsolate>().send<String>(IsolateRequestType.generatePreview, input: input);
+    return ImagePreviewResult.values.byName(result);
   }
 }

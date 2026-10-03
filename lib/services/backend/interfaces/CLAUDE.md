@@ -10,7 +10,7 @@ Interfaces are the **only** public API for triggering backend operations. They r
 | `chat_interface.dart` | Save / delete / mark-read chats |
 | `contact_v2_interface.dart` | Contact sync, handle matching (v2) |
 | `handle_interface.dart` | Save / find phone number handles |
-| `image_interface.dart` | PNG conversion, EXIF, GIF dimensions |
+| `image_interface.dart` | PNG conversion, EXIF, GIF dimensions; typed preview result plus the boolean preview convenience method |
 | `log_interface.dart` | Log write/export calls |
 | `message_interface.dart` | Save / find / delete messages |
 | `prefs_interface.dart` | Settings sync, reply state persistence |

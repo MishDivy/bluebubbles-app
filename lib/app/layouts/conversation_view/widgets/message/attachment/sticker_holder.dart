@@ -1,4 +1,5 @@
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -73,8 +74,12 @@ class _StickerHolderState extends State<StickerHolder> {
                 .map(
                   (path) => ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 100, maxHeight: 100),
-                    child: Image.file(
-                      File(path),
+                    child: Image(
+                      image: ResizeImage.resizeIfNeeded(
+                        (100 * MediaQuery.devicePixelRatioOf(context)).ceil(),
+                        null,
+                        LoopingFileImage(File(path)),
+                      ),
                       gaplessPlayback: true,
                       filterQuality: FilterQuality.none,
                       frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {

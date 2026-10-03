@@ -10,7 +10,7 @@ Actions are pure functions that run **inside** the background isolate. They perf
 | `chat_actions.dart` | Save / delete / mark-read chats, bulk sync |
 | `contact_v2_actions.dart` | Contact sync, handle matching (v2) |
 | `handle_actions.dart` | Save / find phone number handles |
-| `image_actions.dart` | PNG conversion, EXIF, GIF dimensions; JPEG previews only for opaque single-frame images |
+| `image_actions.dart` | PNG conversion, EXIF, GIF dimensions; JPEG previews only for opaque single-frame images, with named created/original/failed outcomes |
 | `log_actions.dart` | Log write/export actions |
 | `message_actions.dart` | Save / find / delete messages, bulk operations |
 | `prefs_actions.dart` | Settings sync, reply state persistence |

@@ -16,7 +16,7 @@ import 'package:get/get.dart';
 import 'package:image_size_getter/file_input.dart';
 import 'package:image_size_getter/image_size_getter.dart' as isg;
 import 'package:path/path.dart';
-import 'package:bluebubbles/models/models.dart' show AttachmentUploadProgress;
+import 'package:bluebubbles/models/models.dart' show AttachmentUploadProgress, ImagePreviewResult;
 import 'package:bluebubbles/utils/file_utils.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:saver_gallery/saver_gallery.dart';
@@ -804,6 +804,14 @@ class AttachmentsService extends GetxService {
   /// bytes belong in Flutter's own `imageCache`, which knows how to evict them.
   final Set<String> _generatedPreviews = {};
 
+  // File paths only; decoded frames remain in Flutter's bounded image cache.
+  final Set<String> _originalImages = {};
+
+  bool usesOriginalImage(Attachment attachment, {String? actualPath}) =>
+      attachment.isSticker ||
+      attachment.mimeType == 'image/gif' ||
+      _originalImages.contains(actualPath ?? attachment.path);
+
   /// Preview generations currently running, keyed by preview path. Scroll churn
   /// recreates `_ImageViewerState`, so without this two generations can
   /// interleave writes to the same file.
@@ -818,7 +826,10 @@ class AttachmentsService extends GetxService {
     return _generatedPreviews.contains(path) ? path : null;
   }
 
-  void clearImagePreviewCache() => _generatedPreviews.clear();
+  void clearImagePreviewCache() {
+    _generatedPreviews.clear();
+    _originalImages.clear();
+  }
 
   // Preview resolution/quality both track the user's "image preview quality"
   // setting (0.25-1.0, same knob already used to scale inline cacheWidth
@@ -845,6 +856,9 @@ class AttachmentsService extends GetxService {
   Future<void> deleteImagePreviews(Attachment attachment) async {
     final prefix = "${attachment.path}.preview.";
     _generatedPreviews.removeWhere((p) => p.startsWith(prefix));
+    _originalImages.remove(attachment.path);
+    _originalImages.remove(attachment.convertedPath);
+    _originalImages.remove(attachment.legacyConvertedPath);
     try {
       final dir = Directory(attachment.directory);
       if (!await dir.exists()) return;
@@ -862,7 +876,7 @@ class AttachmentsService extends GetxService {
   /// with alpha use the original file so playback and transparency survive.
   Future<String?> getOrCreateImagePreview(Attachment attachment, {String? actualPath}) async {
     if (kIsWeb || attachment.mimeType == null || attachment.mimeStart != "image") return null;
-    if (attachment.isSticker || attachment.mimeType == "image/gif") return null;
+    if (usesOriginalImage(attachment, actualPath: actualPath)) return null;
 
     final filePath = actualPath ?? attachment.path;
     // The filename carries the quality bucket, so moving the slider produces a
@@ -926,12 +940,14 @@ class AttachmentsService extends GetxService {
       }
     } else {
       try {
-        ok = await ImageInterface.generatePreview(
+        final result = await ImageInterface.generatePreviewResult(
           path: filePath,
           outputPath: tempPath,
           maxDimension: _imagePreviewMaxDimension,
           quality: _imagePreviewQuality,
         );
+        if (result == ImagePreviewResult.original) _originalImages.add(filePath);
+        ok = result == ImagePreviewResult.created;
       } catch (ex, stack) {
         Logger.error('Failed to generate image preview!', error: ex, trace: stack);
         ok = false;

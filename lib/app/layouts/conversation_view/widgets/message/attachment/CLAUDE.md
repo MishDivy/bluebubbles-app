@@ -12,6 +12,7 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 | `audio_player.dart` | Audio playback with progress bar |
 | `contact_card.dart` | Contact / vCard display |
 | `sticker_holder.dart` | Sticker rendering (full-size emoji-like overlays) |
+| `looping_file_image.dart` | Native sticker decoding with continuous playback; source bytes stay unchanged |
 | `other_file.dart` | Generic file display for docs, archives, APKs, etc. |
 | `live_photo_mixin.dart` | Mixin for handling Live Photo metadata |
 
@@ -32,3 +33,9 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 ## Stickers vs Attachments
 
 Stickers (`associatedMessageType == "sticker"`) are **not** routed through `AttachmentHolder`. They are rendered by `StickerObserver` (in `message_holder/`) as overlays positioned above the bubble.
+
+Standalone image attachments marked `isSticker` use `LoopingFileImage` in
+`ImageViewer`; overlays use it in `StickerHolder`. It delegates frame decoding,
+resizing and disposal to Flutter and overrides only the animation repeat count.
+Its image-cache key is distinct from `FileImage`, whose finite animation may
+already have completed. Normal image attachments keep their source loop policy.

@@ -1,4 +1,5 @@
 import 'package:bluebubbles/utils/logger/logger.dart';
+import 'package:bluebubbles/models/image_preview_result.dart';
 import 'package:convert/convert.dart';
 import 'package:exif/exif.dart';
 import 'package:flutter/foundation.dart';
@@ -175,8 +176,8 @@ class ImageActions {
   /// for those photos.
   /// Input: Map with 'path' (source file), 'outputPath' (destination),
   /// 'maxDimension' (int, longest-side cap), 'quality' (int, 0-100)
-  /// Output: true on success, false on failure (never throws)
-  static Future<bool> generatePreview(dynamic input) async {
+  /// Output: an [ImagePreviewResult] name, safe to send across the isolate boundary.
+  static Future<String> generatePreview(dynamic input) async {
     try {
       final path = input['path'] as String;
       final outputPath = input['outputPath'] as String;
@@ -187,9 +188,11 @@ class ImageActions {
       final decoder = img.findDecoderForData(bytes);
       // Inspect the file, not its MIME label. APNG and animated WebP also need
       // native playback; decoding all their frames just to reject them is costly.
-      if (decoder == null || decoder.startDecode(bytes) == null || decoder.numFrames() > 1) return false;
+      if (decoder == null || decoder.startDecode(bytes) == null) return ImagePreviewResult.failed.name;
+      if (decoder.numFrames() > 1) return ImagePreviewResult.original.name;
       var image = decoder.decodeFrame(0);
-      if (image == null || image.hasAlpha) return false;
+      if (image == null) return ImagePreviewResult.failed.name;
+      if (image.hasAlpha) return ImagePreviewResult.original.name;
 
       // Bakes rotation from the decoded image's own EXIF orientation (if
       // present) into the pixel buffer. This is safe here because the
@@ -208,10 +211,10 @@ class ImageActions {
 
       final encoded = img.encodeJpg(image, quality: quality);
       await File(outputPath).writeAsBytes(encoded);
-      return true;
+      return ImagePreviewResult.created.name;
     } catch (e) {
       Logger.warn('Error generating image preview: $e');
-      return false;
+      return ImagePreviewResult.failed.name;
     }
   }
 

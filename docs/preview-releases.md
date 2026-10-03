@@ -120,6 +120,28 @@ Before promoting a signed update, verify inline playback and transparency on
 the Samsung, including old cached stickers, ordinary photos and fullscreen
 viewing. Automated decoder tests are not phone acceptance.
 
+The owner confirmed build 9 fixes the white background and animates sent
+stickers, but received stickers stop after one play. First-view loading is also
+noticeable; reopening an already-loaded chat is mostly faster. The exact received
+file's repeat metadata has not been inspected. A synthetic play-once APNG
+reproduces the stop in Flutter's standard `FileImage` renderer.
+
+The follow-up uses `LoopingFileImage` for marked sticker attachments and sticker
+overlays. Only playback policy changes: native decoding, frame timing, sizing,
+cache ownership and disposal remain with Flutter. Original attachment bytes are
+unchanged. Ordinary image attachments retain their encoded loop count.
+GIF, APNG and WebP fixtures cover finite playback; widget tests cover repeated
+cycles, reopening the cached image, ticker-mode pause/resume and static alpha.
+
+Preview decisions now distinguish intentional use of an original from decode
+failure. Intentional decisions are remembered by actual source path for the
+session, cleared on preview invalidation, and rendered without waiting on
+another preview-generation future. Missing/corrupt sources remain retryable.
+This reduces avoidable checks; it does not eliminate initial downloads or native
+animation decoding. No further cache version bump or dependency is required.
+Verify received-sticker looping and loading on Samsung before promotion; these
+tests do not prove the owner's particular attachment or phone performance.
+
 ### Published updates
 
 The preview's existing update checker reads only non-draft, non-prerelease

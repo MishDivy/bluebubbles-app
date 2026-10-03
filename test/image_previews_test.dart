@@ -6,6 +6,7 @@ import 'package:bluebubbles/database/global/settings.dart';
 import 'package:bluebubbles/database/io/attachment.dart';
 import 'package:bluebubbles/env.dart';
 import 'package:bluebubbles/services/backend/actions/image_actions.dart';
+import 'package:bluebubbles/services/backend/interfaces/image_interface.dart';
 import 'package:bluebubbles/services/backend/filesystem/filesystem_service.dart';
 import 'package:bluebubbles/services/backend/settings/settings_service.dart';
 import 'package:bluebubbles/services/ui/attachments_service.dart';
@@ -59,12 +60,12 @@ void main() {
     return File('${directory.path}/original.bin').writeAsBytes(bytes);
   }
 
-  Future<bool> generate(File original) => ImageActions.generatePreview({
-    'path': original.path,
-    'outputPath': '${directory.path}/preview.jpg',
-    'maxDimension': 4,
-    'quality': 75,
-  });
+  Future<bool> generate(File original) => ImageInterface.generatePreview(
+    path: original.path,
+    outputPath: '${directory.path}/preview.jpg',
+    maxDimension: 4,
+    quality: 75,
+  );
 
   Future<Attachment> attachment(List<int> bytes, {String mime = 'image/png', bool sticker = false}) async {
     final result = Attachment(
@@ -138,6 +139,65 @@ void main() {
   test('corrupt input falls back without leaving a preview', () async {
     expect(await generate(await source([1, 2, 3])), isFalse);
     expect(await File('${directory.path}/preview.jpg').exists(), isFalse);
+  });
+
+  test('isolate results distinguish originals from retryable failures', () async {
+    for (final (bytes, expected) in [
+      (img.encodePng(transparentImage()), 'original'),
+      (img.encodePng(animation()), 'original'),
+      (img.encodeJpg(img.Image(width: 8, height: 4)), 'created'),
+      ([1, 2, 3], 'failed'),
+    ]) {
+      final original = await source(bytes);
+      expect(
+        await ImageActions.generatePreview({
+          'path': original.path,
+          'outputPath': '${directory.path}/preview.jpg',
+          'maxDimension': 4,
+          'quality': 75,
+        }),
+        expected,
+      );
+    }
+  });
+
+  test('original-file decisions survive quality changes and clear on replacement', () async {
+    final item = await attachment(img.encodePng(transparentImage()));
+    expect(service.usesOriginalImage(item), isFalse);
+    expect(await service.getOrCreateImagePreview(item), isNull);
+    expect(service.usesOriginalImage(item), isTrue);
+    GetIt.I<SettingsService>().settings.previewImageQuality.value = 0.5;
+    // This would produce a JPEG if the cached decision were ignored.
+    await File(item.path).writeAsBytes(img.encodeJpg(img.Image(width: 8, height: 4)));
+    expect(await service.getOrCreateImagePreview(item), isNull);
+    expect(service.usesOriginalImage(item), isTrue);
+    await service.deleteImagePreviews(item);
+    expect(service.usesOriginalImage(item), isFalse);
+    expect(await service.getOrCreateImagePreview(item), isNotNull);
+  });
+
+  test('failed and missing sources remain retryable', () async {
+    final item = await attachment([1, 2, 3]);
+    expect(await service.getOrCreateImagePreview(item), isNull);
+    expect(service.usesOriginalImage(item), isFalse);
+    await File(item.path).delete();
+    expect(await service.getOrCreateImagePreview(item), isNull);
+    expect(service.usesOriginalImage(item), isFalse);
+    await File(item.path).writeAsBytes(img.encodeJpg(img.Image(width: 8, height: 4)));
+    expect(await service.getOrCreateImagePreview(item), isNotNull);
+  });
+
+  test('original decisions follow the actual path and cache clearing', () async {
+    final item = await attachment([1, 2, 3]);
+    await File(item.convertedPath).writeAsBytes(img.encodePng(transparentImage()));
+    expect(await service.getOrCreateImagePreview(item, actualPath: item.convertedPath), isNull);
+    expect(service.usesOriginalImage(item), isFalse);
+    expect(service.usesOriginalImage(item, actualPath: item.convertedPath), isTrue);
+    service.clearImagePreviewCache();
+    expect(service.usesOriginalImage(item, actualPath: item.convertedPath), isFalse);
+    await service.getOrCreateImagePreview(item, actualPath: item.convertedPath);
+    await service.deleteImagePreviews(item);
+    expect(service.usesOriginalImage(item, actualPath: item.convertedPath), isFalse);
   });
 
   test('legacy white JPEG cache is ignored for transparent attachments', () async {
