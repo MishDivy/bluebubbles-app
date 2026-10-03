@@ -813,6 +813,7 @@ class AttachmentsService extends GetxService {
   /// if it is already known to exist. Null means "render the placeholder and
   /// call [getOrCreateImagePreview]".
   String? knownPreviewPath(Attachment attachment) {
+    if (attachment.isSticker || attachment.mimeType == "image/gif") return null;
     final path = attachment.previewPathForQuality(_imagePreviewQuality);
     return _generatedPreviews.contains(path) ? path : null;
   }
@@ -857,11 +858,11 @@ class AttachmentsService extends GetxService {
   /// (resolution/JPEG quality driven by the user's preview image quality
   /// setting), generating + disk-caching it on first use.
   /// The original attachment file is never modified. Returns null if
-  /// generation fails or isn't applicable (e.g. GIFs, which play natively
-  /// and don't get a static preview).
+  /// generation fails or isn't applicable. Stickers, animated images and images
+  /// with alpha use the original file so playback and transparency survive.
   Future<String?> getOrCreateImagePreview(Attachment attachment, {String? actualPath}) async {
     if (kIsWeb || attachment.mimeType == null || attachment.mimeStart != "image") return null;
-    if (attachment.mimeType == "image/gif") return null;
+    if (attachment.isSticker || attachment.mimeType == "image/gif") return null;
 
     final filePath = actualPath ?? attachment.path;
     // The filename carries the quality bucket, so moving the slider produces a

@@ -320,8 +320,9 @@ class Attachment {
   ///
   /// The JPEG quality bucket is part of the filename so that changing the
   /// preview-quality setting resolves to a different file instead of silently
-  /// reusing a preview generated at the old quality.
-  String previewPathForQuality(int quality) => "$path.preview.q$quality.jpg";
+  /// reusing a preview generated at the old quality. v2 excludes JPEGs that
+  /// flattened transparency or animation in earlier previews.
+  String previewPathForQuality(int quality) => "$path.preview.v2.q$quality.jpg";
 
   bool get existsOnDisk => File(path).existsSync();
 

@@ -69,8 +69,8 @@ class ImageInterface {
   }
 
   /// Generates a downsampled, rotation-corrected JPEG preview at [outputPath]
-  /// for fast inline display. Not usable for HEIC sources.
-  /// Returns true on success.
+  /// for opaque still images. Not usable for HEIC sources.
+  /// Returns false for alpha/animation or failure; callers render the original.
   static Future<bool> generatePreview({
     required String path,
     required String outputPath,

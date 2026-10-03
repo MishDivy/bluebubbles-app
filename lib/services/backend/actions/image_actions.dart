@@ -169,10 +169,10 @@ class ImageActions {
     }
   }
 
-  /// Generates a downsampled, rotation-corrected JPEG preview for fast inline
-  /// display, using the `image` package. Not usable for HEIC sources (the
-  /// `image` package can't decode HEIC) -- callers should use
-  /// `flutter_image_compress` directly for those.
+  /// Generates a downsampled, rotation-corrected JPEG preview for opaque still
+  /// images. Transparent and animated images use the original file instead.
+  /// The `image` package cannot decode HEIC; callers use the native converter
+  /// for those photos.
   /// Input: Map with 'path' (source file), 'outputPath' (destination),
   /// 'maxDimension' (int, longest-side cap), 'quality' (int, 0-100)
   /// Output: true on success, false on failure (never throws)
@@ -184,8 +184,12 @@ class ImageActions {
       final quality = input['quality'] as int;
 
       final bytes = await File(path).readAsBytes();
-      var image = img.decodeImage(bytes);
-      if (image == null) return false;
+      final decoder = img.findDecoderForData(bytes);
+      // Inspect the file, not its MIME label. APNG and animated WebP also need
+      // native playback; decoding all their frames just to reject them is costly.
+      if (decoder == null || decoder.startDecode(bytes) == null || decoder.numFrames() > 1) return false;
+      var image = decoder.decodeFrame(0);
+      if (image == null || image.hasAlpha) return false;
 
       // Bakes rotation from the decoded image's own EXIF orientation (if
       // present) into the pixel buffer. This is safe here because the
