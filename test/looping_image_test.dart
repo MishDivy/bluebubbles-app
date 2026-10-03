@@ -4,17 +4,25 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/image_viewer.dart';
-import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
+import 'package:bluebubbles/app/layouts/fullscreen_media/fullscreen_image.dart';
 import 'package:bluebubbles/database/models.dart' show Attachment, PlatformFile, Settings;
 import 'package:bluebubbles/env.dart';
 import 'package:bluebubbles/services/backend/filesystem/filesystem_service.dart';
 import 'package:bluebubbles/services/backend/settings/settings_service.dart';
+import 'package:bluebubbles/services/ui/theme/themes_service.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
+import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
 import 'package:get_it/get_it.dart';
 import 'package:image/image.dart' as img;
+
+class _TestThemesService extends ThemesService {
+  @override
+  bool get isAnyMaterialYouSelected => false;
+}
 
 List<int> stickerBytes({int plays = 1, bool animated = true, String format = 'APNG'}) {
   final image = img.Image(width: 8, height: 4, numChannels: 4)
@@ -76,6 +84,18 @@ Widget imageWidget(ImageProvider provider, void Function(int) onFrame, {bool ena
   ),
 );
 
+Uint8List fourPlayAnimation() {
+  final image = img.Image(width: 8, height: 4, numChannels: 4)
+    ..loopCount = 4
+    ..frameDuration = 125;
+  for (var i = 0; i < 8; i++) {
+    final frame = i == 0 ? image : image.addFrame(img.Image(width: 8, height: 4, numChannels: 4));
+    frame.frameDuration = 125;
+    frame.setPixelRgba(1, 1, i * 30, 0, 255 - i * 30, 128);
+  }
+  return Uint8List.fromList(img.encodePng(image));
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory directory;
@@ -93,6 +113,103 @@ void main() {
     await directory.delete(recursive: true);
     await GetIt.I.reset();
   });
+
+  test('memory playback has a separate cache key from finite playback', () {
+    final bytes = fourPlayAnimation();
+    final looping = LoopingMemoryImage(bytes);
+    expect(looping, isNot(MemoryImage(bytes)));
+    expect(MemoryImage(bytes), isNot(looping));
+    expect(looping, LoopingMemoryImage(bytes));
+    expect(looping, isNot(LoopingMemoryImage(bytes, scale: 2)));
+  });
+
+  const samplePath = String.fromEnvironment('STICKER_SAMPLE_PATH');
+  for (final sample in ['synthetic', if (samplePath.isNotEmpty) 'local sample']) {
+    Future<Uint8List> sampleBytes() async =>
+        sample == 'synthetic' ? fourPlayAnimation() : File(samplePath).readAsBytes();
+
+    testWidgets('$sample: native playback stops at the four-play limit', (tester) async {
+      await tester.runAsync(() async {
+        await file.writeAsBytes(await sampleBytes());
+        final codec = await ui.instantiateImageCodec(await file.readAsBytes());
+        expect(codec.frameCount, 8);
+        expect(codec.repetitionCount, 3);
+        codec.dispose();
+      });
+      var frame = -1;
+      await tester.pumpWidget(imageWidget(FileImage(file), (value) => frame = value));
+      await advanceFrames(tester, count: 100);
+      expect(frame, 31);
+      await advanceFrames(tester, count: 20);
+      expect(frame, 31);
+      await tester.pumpWidget(const SizedBox.shrink());
+    });
+
+    for (final fullscreen in [false, true]) {
+      for (final fromMemory in [false, true]) {
+        testWidgets('$sample: fullscreen=$fullscreen memory=$fromMemory loops past four plays', (tester) async {
+          GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
+          GetIt.I.registerSingleton<ThemesService>(_TestThemesService());
+          GetIt.I.registerSingleton<FilesystemService>(FilesystemService()..appDocDir = directory);
+          GetIt.I.registerSingleton<BaseLogger>(BaseLogger());
+          isIsolateOverride = true;
+          late Uint8List bytes;
+          await tester.runAsync(() async {
+            bytes = await sampleBytes();
+            await file.writeAsBytes(bytes);
+          });
+          final attachment = Attachment(
+            guid: 'finite-received-animation',
+            transferName: 'received.png',
+            mimeType: 'image/png',
+            width: 370,
+            height: 300,
+            metadata: {'_orientation_processed': true},
+          );
+          final platformFile = PlatformFile(
+            name: 'received.png',
+            path: fromMemory ? null : file.path,
+            bytes: fromMemory ? bytes : null,
+            size: bytes.length,
+          );
+          Widget viewer() => GetMaterialApp(
+            home: Scaffold(
+              body: fullscreen
+                  ? FullscreenImage(
+                      file: platformFile,
+                      attachment: attachment,
+                      showInteractions: false,
+                      updatePhysics: (_) {},
+                    )
+                  : ImageViewer(file: platformFile, attachment: attachment, isFromMe: false),
+            ),
+          );
+          Future<void> expectMovingPixels() async {
+            await advanceFrames(tester, count: 100);
+            final frames = <String>{};
+            for (var i = 0; i < 16; i++) {
+              await advanceFrames(tester, count: 1);
+              final image = tester.widget<RawImage>(find.byType(RawImage)).image!;
+              await tester.runAsync(() async {
+                final pixels = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+                frames.add(sha256.convert(pixels!.buffer.asUint8List()).toString());
+              });
+            }
+            expect(frames.length, greaterThan(1));
+            expect(tester.takeException(), isNull);
+          }
+
+          await tester.pumpWidget(viewer());
+          await expectMovingPixels();
+          await tester.pumpWidget(const SizedBox.shrink());
+          await tester.pumpWidget(viewer());
+          await expectMovingPixels();
+          await tester.runAsync(() async => expect(await file.readAsBytes(), bytes));
+          await tester.pumpWidget(const SizedBox.shrink());
+        });
+      }
+    }
+  }
 
   for (final format in ['GIF', 'WebP']) {
     testWidgets('finite-loop $format keeps playing without changing the source', (tester) async {

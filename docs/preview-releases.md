@@ -122,9 +122,8 @@ viewing. Automated decoder tests are not phone acceptance.
 
 The owner confirmed build 9 fixes the white background and animates sent
 stickers, but received stickers stop after one play. First-view loading is also
-noticeable; reopening an already-loaded chat is mostly faster. The exact received
-file's repeat metadata has not been inspected. A synthetic play-once APNG
-reproduces the stop in Flutter's standard `FileImage` renderer.
+noticeable; reopening an already-loaded chat is mostly faster. A synthetic
+play-once APNG reproduces the stop in Flutter's standard `FileImage` renderer.
 
 Build 10 used `LoopingFileImage` only for marked sticker attachments and sticker
 overlays. The owner confirmed version code 10 still stops while staying in the
@@ -134,12 +133,30 @@ A widget regression reproduces this stop for a received animation without an
 `isSticker` flag: the original-file fallback selects `FileImage`, which stops at
 the encoded repeat limit. The renderer now uses `LoopingFileImage` for original
 inline images regardless of that flag, including ordinary animated GIFs, APNGs
-and WebPs. This is a confirmed uncovered path, not yet a diagnosis of the owner's
-particular attachment; its file and metadata have not been inspected.
+and WebPs. The sticker flag in the owner's on-device database has not been
+inspected; playback no longer depends on it.
+
+The owner then supplied the failing received PNG from the Mina and Suji pack.
+Its APNG chunks are intact: 8 frames, 125 ms each, and `num_plays = 4` (four
+seconds total). Flutter reports 8 frames and a repetition count of 3, then stops
+at frame index 31. Local tests reproduce this with the supplied file. Saving it
+did not flatten the animation. The artwork stays outside Git and CI.
+
+`FullscreenImage` also used the standard finite-play provider. Inline and
+fullscreen viewers now share `LoopingFileImage` and `LoopingMemoryImage` from
+`looping_image.dart`, covering both file and byte-backed sources. Regression
+tests check visible frame changes beyond the repeat limit and after reopening.
+CI uses a synthetic eight-frame, four-play APNG. To test the same timing with
+an optional local sample without copying it into the repository:
+
+```sh
+flutter test --no-pub --dart-define=STICKER_SAMPLE_PATH=/absolute/path/received.png \
+  test/looping_image_test.dart --plain-name 'local sample:'
+```
 
 Only playback policy changes: native decoding, frame timing, sizing, cache
 ownership and disposal remain with Flutter. Original attachment bytes are
-unchanged. Opaque photo previews, static originals, fullscreen/reply previews,
+unchanged. Opaque photo previews, static originals, reply previews,
 and desktop GIF Reduce Motion keep their existing behavior.
 GIF, APNG and WebP fixtures cover finite playback; widget tests cover repeated
 cycles, reopening the cached image, ticker-mode pause/resume and static alpha.
@@ -152,8 +169,8 @@ session, cleared on preview invalidation, and rendered without waiting on
 another preview-generation future. Missing/corrupt sources remain retryable.
 This reduces avoidable checks; it does not eliminate initial downloads or native
 animation decoding. No further cache version bump or dependency is required.
-Verify received-sticker looping and loading on Samsung before promotion; these
-tests do not prove the owner's particular attachment or phone performance.
+Verify received-sticker looping and loading on Samsung before promotion. Local
+widget tests use the owner's attachment but do not prove phone performance.
 
 ### Published updates
 

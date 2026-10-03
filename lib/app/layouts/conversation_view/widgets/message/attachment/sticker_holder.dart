@@ -1,5 +1,5 @@
 import 'package:bluebubbles/database/models.dart';
-import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

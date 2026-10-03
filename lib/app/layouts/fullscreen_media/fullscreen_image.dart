@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/live_photo_mixin.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
 import 'package:bluebubbles/app/layouts/fullscreen_media/dialogs/metadata_dialog.dart';
 import 'package:bluebubbles/utils/share.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -135,8 +136,8 @@ class _FullscreenImageState extends State<FullscreenImage>
       maxScale: PhotoViewComputedScale.contained * 10,
       controller: controller,
       imageProvider: bytes != null
-          ? MemoryImage(bytes!) as ImageProvider
-          : FileImage(File(compatiblePath ?? file.path!)),
+          ? LoopingMemoryImage(bytes!) as ImageProvider
+          : LoopingFileImage(File(compatiblePath ?? file.path!)),
       loadingBuilder: (BuildContext context, ImageChunkEvent? ev) {
         return Center(child: buildProgressIndicator(context));
       },

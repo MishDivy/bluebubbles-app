@@ -3,7 +3,7 @@ import 'dart:io';
 
 import 'package:bluebubbles/app/components/image_blur_canvas.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/live_photo_mixin.dart';
-import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/media_unavailable_placeholder.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -247,8 +247,8 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
       } else {
         final qualityFactor = SettingsSvc.settings.previewImageQuality.value;
         final calculatedWidth = (displayWidth * Get.pixelRatio * qualityFactor).round().abs().nonZero;
-        imageWidget = Image.memory(
-          file.bytes!,
+        imageWidget = Image(
+          image: ResizeImage.resizeIfNeeded(calculatedWidth, null, LoopingMemoryImage(file.bytes!)),
           gaplessPlayback: true,
           filterQuality: FilterQuality.high,
           width: displayWidth,
@@ -259,7 +259,6 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
           // Passing height as well would make ResizeImagePolicy.exact behave
           // like BoxFit.fill and stretch the bitmap; width alone preserves the
           // aspect ratio.
-          cacheWidth: calculatedWidth,
           fit: BoxFit.contain,
           frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
             if (wasSynchronouslyLoaded) return child;

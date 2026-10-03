@@ -12,7 +12,7 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 | `audio_player.dart` | Audio playback with progress bar |
 | `contact_card.dart` | Contact / vCard display |
 | `sticker_holder.dart` | Sticker rendering (full-size emoji-like overlays) |
-| `looping_file_image.dart` | Native sticker decoding with continuous playback; source bytes stay unchanged |
+| `looping_image.dart` | Native file/memory decoding with continuous playback; source bytes stay unchanged |
 | `other_file.dart` | Generic file display for docs, archives, APKs, etc. |
 | `live_photo_mixin.dart` | Mixin for handling Live Photo metadata |
 
@@ -35,10 +35,11 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 Stickers (`associatedMessageType == "sticker"`) are **not** routed through `AttachmentHolder`. They are rendered by `StickerObserver` (in `message_holder/`) as overlays positioned above the bubble.
 
 Original-file images use `LoopingFileImage` in `ImageViewer`; overlays use it in
-`StickerHolder`. Inline animations loop without requiring an `isSticker` flag.
-It delegates frame decoding, resizing and disposal to Flutter and overrides
+`StickerHolder`. Byte-backed images use `LoopingMemoryImage`. Both providers also
+serve `FullscreenImage`. Animations loop without requiring an `isSticker` flag.
+They delegate frame decoding, resizing and disposal to Flutter and override
 only the animation repeat count. Still-image JPEG previews are unchanged.
-Its image-cache key is distinct from `FileImage`, whose finite animation may
-already have completed. Static originals still render one frame. Fullscreen and
-reply previews keep their existing playback behavior, as does desktop GIF
+Their image-cache keys are distinct from the standard providers, whose finite
+animations may already have completed. Static originals still render one frame.
+Reply previews keep their existing playback behavior, as does desktop GIF
 Reduce Motion (paused until hovered).
