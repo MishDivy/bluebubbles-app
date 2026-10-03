@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/painting.dart';
 
-/// Sticker playback with native decoding, sizing and image-cache ownership.
+/// Inline animation playback with native decoding, sizing and image-cache ownership.
 /// The source file is never rewritten, even if it specifies a finite loop count.
 class LoopingFileImage extends FileImage {
   const LoopingFileImage(super.file, {super.scale});

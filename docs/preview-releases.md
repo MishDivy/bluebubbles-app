@@ -126,12 +126,25 @@ noticeable; reopening an already-loaded chat is mostly faster. The exact receive
 file's repeat metadata has not been inspected. A synthetic play-once APNG
 reproduces the stop in Flutter's standard `FileImage` renderer.
 
-The follow-up uses `LoopingFileImage` for marked sticker attachments and sticker
-overlays. Only playback policy changes: native decoding, frame timing, sizing,
-cache ownership and disposal remain with Flutter. Original attachment bytes are
-unchanged. Ordinary image attachments retain their encoded loop count.
+Build 10 used `LoopingFileImage` only for marked sticker attachments and sticker
+overlays. The owner confirmed version code 10 still stops while staying in the
+chat with the screen on. It did not resolve the reported issue.
+
+A widget regression reproduces this stop for a received animation without an
+`isSticker` flag: the original-file fallback selects `FileImage`, which stops at
+the encoded repeat limit. The renderer now uses `LoopingFileImage` for original
+inline images regardless of that flag, including ordinary animated GIFs, APNGs
+and WebPs. This is a confirmed uncovered path, not yet a diagnosis of the owner's
+particular attachment; its file and metadata have not been inspected.
+
+Only playback policy changes: native decoding, frame timing, sizing, cache
+ownership and disposal remain with Flutter. Original attachment bytes are
+unchanged. Opaque photo previews, static originals, fullscreen/reply previews,
+and desktop GIF Reduce Motion keep their existing behavior.
 GIF, APNG and WebP fixtures cover finite playback; widget tests cover repeated
 cycles, reopening the cached image, ticker-mode pause/resume and static alpha.
+The incoming-image regressions sample changing pixels in the real `ImageViewer`
+after the encoded repeat limit, with missing and false sticker flags.
 
 Preview decisions now distinguish intentional use of an original from decode
 failure. Intentional decisions are remembered by actual source path for the

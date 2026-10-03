@@ -6,7 +6,10 @@ import 'dart:ui' as ui;
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/image_viewer.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_file_image.dart';
 import 'package:bluebubbles/database/models.dart' show Attachment, PlatformFile, Settings;
+import 'package:bluebubbles/env.dart';
+import 'package:bluebubbles/services/backend/filesystem/filesystem_service.dart';
 import 'package:bluebubbles/services/backend/settings/settings_service.dart';
+import 'package:bluebubbles/utils/logger/logger.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
@@ -23,7 +26,11 @@ List<int> stickerBytes({int plays = 1, bool animated = true, String format = 'AP
         .addFrame(img.Image(width: 8, height: 4, numChannels: 4)..frameDuration = 100)
         .setPixelRgba(1, 1, 0, 0, 255, 128);
   }
-  if (format == 'GIF') return img.encodeGif(image);
+  if (format == 'GIF') {
+    img.fill(image.frames.first, color: img.ColorRgba8(255, 0, 0, 255));
+    if (animated) img.fill(image.frames.last, color: img.ColorRgba8(0, 0, 255, 255));
+    return img.encodeGif(image);
+  }
   if (format == 'WebP') {
     // Synthetic red/blue 2x2 frames from Pillow's lossless WebP encoder.
     final bytes = base64Decode(
@@ -80,6 +87,7 @@ void main() {
   });
 
   tearDown(() async {
+    isIsolateOverride = false;
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
     await directory.delete(recursive: true);
@@ -136,6 +144,78 @@ void main() {
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  for (final format in ['APNG', 'GIF', 'WebP']) {
+    for (final stickerFlag in [null, false]) {
+      testWidgets('received $format loops with sticker flag $stickerFlag, including after reopening', (tester) async {
+        GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
+        GetIt.I.registerSingleton<FilesystemService>(FilesystemService()..appDocDir = directory);
+        GetIt.I.registerSingleton<BaseLogger>(BaseLogger());
+        isIsolateOverride = true;
+        final bytes = stickerBytes(format: format);
+        await tester.runAsync(() async {
+          await file.writeAsBytes(bytes);
+          final codec = await ui.instantiateImageCodec(await file.readAsBytes());
+          expect(codec.frameCount, 2);
+          expect(codec.repetitionCount, greaterThanOrEqualTo(0));
+          final colors = <int>{};
+          for (var i = 0; i < codec.frameCount; i++) {
+            final frame = await codec.getNextFrame();
+            final pixels = await frame.image.toByteData(format: ui.ImageByteFormat.rawRgba);
+            colors.add(pixels!.getUint32((frame.image.width + 1) * 4));
+            frame.image.dispose();
+          }
+          codec.dispose();
+          expect(colors.length, 2, reason: 'The fixture must have visibly different frames');
+        });
+        final attachment = Attachment.fromMap({
+          'guid': 'received-unmarked-animation',
+          'transferName': 'received.png',
+          'mimeType': format == 'GIF' ? 'image/gif' : 'image/png',
+          'width': 8,
+          'height': 4,
+          'isSticker': ?stickerFlag,
+          'metadata': {'_orientation_processed': true},
+        });
+        expect(attachment.isSticker, isFalse);
+
+        Widget viewer() => GetMaterialApp(
+          home: Scaffold(
+            body: ImageViewer(
+              file: PlatformFile(name: 'received.png', path: file.path, size: bytes.length),
+              attachment: attachment,
+              isFromMe: false,
+            ),
+          ),
+        );
+
+        Future<void> expectVisibleAnimation() async {
+          // Sample pixels after the encoded finite animation would have finished.
+          await advanceFrames(tester, count: 24);
+          final colors = <int>{};
+          for (var i = 0; i < 12; i++) {
+            await advanceFrames(tester, count: 1);
+            final image = tester.widget<RawImage>(find.byType(RawImage)).image!;
+            await tester.runAsync(() async {
+              final pixels = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+              colors.add(pixels!.getUint32((image.width + 1) * 4));
+            });
+          }
+          expect(colors.length, greaterThan(1));
+          expect(tester.takeException(), isNull);
+        }
+
+        await tester.pumpWidget(viewer());
+        await expectVisibleAnimation();
+        await tester.pumpWidget(const SizedBox.shrink());
+        await advanceFrames(tester, count: 3);
+        await tester.pumpWidget(viewer());
+        await expectVisibleAnimation();
+        await tester.runAsync(() async => expect(await file.readAsBytes(), bytes));
+        await tester.pumpWidget(const SizedBox.shrink());
+      });
+    }
+  }
 
   testWidgets('play-once sticker stops with FileImage but loops with the sticker provider', (tester) async {
     final bytes = stickerBytes();

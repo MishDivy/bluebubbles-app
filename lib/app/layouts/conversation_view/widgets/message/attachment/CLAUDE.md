@@ -34,8 +34,11 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 
 Stickers (`associatedMessageType == "sticker"`) are **not** routed through `AttachmentHolder`. They are rendered by `StickerObserver` (in `message_holder/`) as overlays positioned above the bubble.
 
-Standalone image attachments marked `isSticker` use `LoopingFileImage` in
-`ImageViewer`; overlays use it in `StickerHolder`. It delegates frame decoding,
-resizing and disposal to Flutter and overrides only the animation repeat count.
+Original-file images use `LoopingFileImage` in `ImageViewer`; overlays use it in
+`StickerHolder`. Inline animations loop without requiring an `isSticker` flag.
+It delegates frame decoding, resizing and disposal to Flutter and overrides
+only the animation repeat count. Still-image JPEG previews are unchanged.
 Its image-cache key is distinct from `FileImage`, whose finite animation may
-already have completed. Normal image attachments keep their source loop policy.
+already have completed. Static originals still render one frame. Fullscreen and
+reply previews keep their existing playback behavior, as does desktop GIF
+Reduce Motion (paused until hovered).

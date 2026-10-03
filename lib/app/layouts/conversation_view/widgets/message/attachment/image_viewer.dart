@@ -306,14 +306,13 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
         ),
       );
 
-      // Fallback: render the original file directly, used when preview
-      // generation fails.
+      // Originals retain animation and alpha when a JPEG preview is skipped or fails.
       Widget buildOriginalFallback() {
         return Image(
           image: ResizeImage.resizeIfNeeded(
             calculatedWidth,
             null,
-            attachment.isSticker ? LoopingFileImage(File(file.path!)) : FileImage(File(file.path!)),
+            LoopingFileImage(File(file.path!)),
           ),
           gaplessPlayback: true,
           filterQuality: FilterQuality.high,
@@ -402,7 +401,7 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
             if (snapshot.connectionState != ConnectionState.done) return placeholder();
             final previewPath = snapshot.data;
             if (previewPath != null) return buildPreview(previewPath);
-            // Preview generation genuinely failed — fall back to the original.
+            // Render the original when preview generation skips the file or fails.
             return buildOriginalFallback();
           },
         );
