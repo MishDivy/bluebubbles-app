@@ -99,6 +99,7 @@ class ReactionDetails extends StatelessWidget {
                           child: SettingsSvc.settings.skin.value == Skins.iOS
                               ? ReactionIcon(
                                   type: message.associatedMessageType,
+                                  attachment: message.dbAttachments.firstOrNull,
                                   classicAsSvg: true,
                                   color: message.associatedMessageType == "love"
                                       ? Colors.pink
@@ -108,6 +109,11 @@ class ReactionDetails extends StatelessWidget {
                                 )
                               : Center(
                                   child: Builder(builder: (context) {
+                                    if (ReactionTypes.isStickerReaction(message.associatedMessageType)) {
+                                      return ReactionIcon(type: message.associatedMessageType,
+                                        color: context.theme.colorScheme.onSurface,
+                                        attachment: message.dbAttachments.firstOrNull);
+                                    }
                                     final text = Text(
                                       ReactionTypes.displayEmoji(message.associatedMessageType),
                                       style: const TextStyle(fontSize: 18, fontFamily: 'Apple Color Emoji'),

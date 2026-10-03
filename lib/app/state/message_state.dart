@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
+import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 
 import 'package:bluebubbles/app/state/attachment_state.dart';
 import 'package:bluebubbles/app/state/handle_state.dart';
@@ -8,6 +10,8 @@ import 'package:bluebubbles/services/services.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'package:get_it/get_it.dart';
+import 'package:bluebubbles/services/isolates/global_isolate.dart';
 
 /// State wrapper for Message that provides granular reactivity for UI components.
 /// Each field that may affect the UI is tracked separately, allowing widgets
@@ -156,6 +160,9 @@ class MessageState extends StatefulController {
   StreamSubscription? _sub;
   bool built = false;
   bool _partsCached = false;
+  bool _partsDisposed = false;
+  final _partAttachmentLookups = <String>{};
+  final _resolvedPartAttachments = <String, Attachment>{};
 
   static const maxBubbleSizeFactor = 0.75;
 
@@ -310,6 +317,8 @@ class MessageState extends StatefulController {
 
   @override
   void onClose() {
+    _partsDisposed = true;
+    _resolvedPartAttachments.clear();
     _sub?.cancel();
     for (final state in attachmentStates.values) {
       state.dispose();
@@ -428,7 +437,7 @@ class MessageState extends StatefulController {
     // Try to find existing reaction by ID or GUID
     int index = associatedMessages.indexWhere((e) =>
         (e.id == reaction.id && e.id != null) ||
-        (e.guid == reaction.guid && !reaction.guid!.startsWith('temp')) ||
+        (e.guid != null && e.guid == reaction.guid) ||
         (tempGuid != null && e.guid == tempGuid));
 
     if (index >= 0) {
@@ -437,7 +446,9 @@ class MessageState extends StatefulController {
     } else {
       // Check if this replaces a temp reaction
       final tempIndex = associatedMessages.indexWhere((e) =>
+          ReactionTypes.isReaction(reaction.associatedMessageType) &&
           (e.guid?.startsWith('temp') == true || e.guid?.startsWith('error') == true) &&
+          e.isFromMe == reaction.isFromMe && e.handleId == reaction.handleId &&
           e.associatedMessageType == reaction.associatedMessageType &&
           (e.associatedMessagePart ?? 0) == (reaction.associatedMessagePart ?? 0));
 
@@ -462,7 +473,8 @@ class MessageState extends StatefulController {
 
   /// Remove an associated message (reaction/edit)
   void removeAssociatedMessageInternal(Message reaction) {
-    associatedMessages.removeWhere((e) => e.id == reaction.id);
+    associatedMessages.removeWhere((e) => (reaction.id != null && e.id == reaction.id) ||
+        (reaction.guid != null && e.guid == reaction.guid));
     message.associatedMessages = associatedMessages.toList();
     hasReactions.value = associatedMessages.isNotEmpty;
   }
@@ -738,10 +750,16 @@ class MessageState extends StatefulController {
           !message.isLegacyUrlPreview &&
           !message.isInteractive &&
           !message.isGroupEvent) {
-        newParts.addAll(message.dbAttachments.mapIndexed((index, e) => MessagePart(
+        final row = StickerHelper.rowAttachments(message.dbAttachments.toList()) ??
+            (message.dbAttachments.length == 1 && message.dbAttachments.single.isSticker ? message.dbAttachments.toList() : null);
+        if (row != null) {
+          newParts.add(MessagePart(part: 0, attachments: row, isInlineSticker: true));
+        } else {
+          newParts.addAll(message.dbAttachments.mapIndexed((index, e) => MessagePart(
               attachments: [e],
               part: index,
             )));
+        }
       } else if (message.isInteractive) {
         newParts.add(MessagePart(
           part: 0,
@@ -768,53 +786,37 @@ class MessageState extends StatefulController {
   }
 
   List<MessagePart> attributedBodyToMessagePart(AttributedBody body) {
-    final mainString = body.string;
-    final list = <MessagePart>[];
-    body.runs.sort((a, b) => a.range.first.compareTo(b.range.first));
-    body.runs.forEachIndexed((i, e) async {
-      if (e.attributes?.messagePart == null) return;
-      final existingPart = list.firstWhereOrNull((element) => element.part == e.attributes!.messagePart!);
-      if (existingPart != null) {
-        final newText = mainString.substring(e.range.first, e.range.first + e.range.last);
-        final currentLength = existingPart.text?.length ?? 0;
-        existingPart.text = (existingPart.text ?? "") + newText;
-        if (e.hasMention) {
-          existingPart.mentions.add(Mention(
-            mentionedAddress: e.attributes?.mention,
-            range: [currentLength, currentLength + e.range.last],
-          ));
-          existingPart.mentions.sort((a, b) => a.range.first.compareTo(b.range.first));
+    final attachments = [...message.dbAttachments, ..._resolvedPartAttachments.values];
+    final chatGuid = cvController?.chat.guid ?? ChatsSvc.activeChat?.chat.guid;
+    for (final run in body.runs.where((run) => run.isAttachment)) {
+        final guid = run.attributes!.attachmentGuid!;
+        if (attachments.any((attachment) => attachment.guid == guid)) continue;
+        final cached = chatGuid == null ? null : maybeFindMessagesSvc(chatGuid)?.struct.getAttachment(guid);
+        if (cached != null) {
+          attachments.add(cached);
+        } else if (!kIsWeb && GetIt.I.isRegistered<GlobalIsolate>() && _partAttachmentLookups.length < 32 &&
+            _partAttachmentLookups.add(guid)) {
+          unawaited(_resolvePartAttachment(guid));
         }
-      } else {
-        Attachment? foundAttachment;
-        if (e.isAttachment && (cvController?.chat != null || ChatsSvc.activeChat != null)) {
-          final attachmentGuid = e.attributes!.attachmentGuid!;
-          foundAttachment = message.dbAttachments.firstWhereOrNull((a) => a.guid == attachmentGuid);
-          if (foundAttachment == null) {
-            foundAttachment = maybeFindMessagesSvc(cvController?.chat.guid ?? ChatsSvc.activeChat!.chat.guid)
-                ?.struct
-                .getAttachment(attachmentGuid);
-            foundAttachment ??= await Attachment.findOneAsync(attachmentGuid);
-          }
-        }
-
-        list.add(MessagePart(
-          subject: i == 0 ? message.subject : null,
-          text: e.isAttachment ? null : mainString.substring(e.range.first, e.range.first + e.range.last),
-          attachments: foundAttachment != null ? [foundAttachment] : [],
-          mentions: !e.hasMention
-              ? []
-              : [
-                  Mention(
-                    mentionedAddress: e.attributes?.mention,
-                    range: [0, e.range.last],
-                  )
-                ],
-          part: e.attributes!.messagePart!,
-        ));
       }
-    });
-    return list;
+    final parsed = StickerHelper.attributedParts(body, attachments, subject: message.subject);
+    for (final part in parsed.where((part) => part.isInlineSticker)) {
+      for (final attachment in part.attachments) {
+        attachment.metadata = {...?attachment.metadata, 'isSticker': true};
+      }
+    }
+    return parsed;
+  }
+
+  Future<void> _resolvePartAttachment(String guid) async {
+    try {
+      final attachment = await Attachment.findOneAsync(guid);
+      if (_partsDisposed || attachment == null) return;
+      _resolvedPartAttachments[guid] = attachment;
+      buildMessageParts(force: true);
+    } catch (_) {
+      // The normal message hydration path can supply the attachment later.
+    }
   }
 
   /// Called by [MessagesService] during a temp → real GUID swap AFTER the

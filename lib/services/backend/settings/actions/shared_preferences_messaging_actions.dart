@@ -1,4 +1,5 @@
 import 'package:bluebubbles/services/backend/settings/shared_preferences_service.dart';
+import 'dart:convert';
 
 class ReplyToMessageState {
   final String messageGuid;
@@ -19,6 +20,20 @@ class SharedPreferencesMessagingActions {
   static const String _recentReplyKey = 'recent-reply';
   static const String _replyToMessagePrefix = 'replyToMessage';
   static const String _replyToMessagePartPrefix = 'replyToMessagePart';
+  static const String _hiddenStickerPlacementsKey = 'hiddenStickerPlacements';
+
+  String _placementKey(String server, String chat, String placement) => jsonEncode([server, chat, placement]);
+
+  bool isStickerPlacementHidden(String server, String chat, String placement) =>
+      (service.i.getStringList(_hiddenStickerPlacementsKey) ?? []).contains(_placementKey(server, chat, placement));
+
+  Future<void> hideStickerPlacement(String server, String chat, String placement) async {
+    final key = _placementKey(server, chat, placement);
+    final hidden = (service.i.getStringList(_hiddenStickerPlacementsKey) ?? []).toSet().toList()..remove(key);
+    hidden.add(key);
+    await service.i.setStringList(_hiddenStickerPlacementsKey,
+      hidden.length > 1000 ? hidden.sublist(hidden.length - 1000) : hidden);
+  }
 
   final SharedPreferencesService service;
 

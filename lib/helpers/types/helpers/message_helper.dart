@@ -7,13 +7,11 @@ import 'package:flutter/widgets.dart';
 class MessageHelper {
   /// Removes duplicate associated message guids from a list of [associatedMessages]
   static List<Message> normalizedAssociatedMessages(List<Message> associatedMessages) {
-    Set<String> guids = associatedMessages.map((e) => e.guid!).toSet();
+    final guids = <String>{};
     List<Message> normalized = [];
 
     for (Message message in associatedMessages.reversed.toList()) {
-      if (!ReactionTypes.isReaction(message.associatedMessageType)) {
-        normalized.add(message);
-      } else if (guids.remove(message.guid)) {
+      if (message.guid == null || guids.add(message.guid!)) {
         normalized.add(message);
       }
     }

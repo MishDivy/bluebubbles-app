@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:bluebubbles/database/models.dart';
 
-enum QueueType { sendMessage, sendReaction, sendAttachment, sendMultipart }
+enum QueueType { sendMessage, sendReaction, sendAttachment, sendMultipart, sendStickerRow }
 
 abstract class QueueItem {
   QueueType type;
@@ -15,12 +15,7 @@ abstract class OutgoingQueueItem extends QueueItem {
   Chat chat;
   Message message;
 
-  OutgoingQueueItem({
-    required super.type,
-    super.completer,
-    required this.chat,
-    required this.message,
-  });
+  OutgoingQueueItem({required super.type, super.completer, required this.chat, required this.message});
 
   /// Whether this item is a user-initiated retry of a previously-failed send.
   /// Retries reuse the message's existing GUID/DB row rather than generating
@@ -100,4 +95,43 @@ class OutgoingMultipartMessage extends OutgoingQueueItem {
     this.isRetry = false,
     this.clearNotificationsIfFromMe = true,
   }) : super(type: QueueType.sendMultipart);
+}
+
+class OutgoingStickerRow extends OutgoingQueueItem {
+  final List<Attachment> attachments;
+  @override
+  final bool isRetry;
+
+  OutgoingStickerRow({
+    super.completer,
+    required super.chat,
+    required super.message,
+    required List<Attachment> attachments,
+    this.isRetry = false,
+  }) : attachments = List.unmodifiable(attachments),
+       super(type: QueueType.sendStickerRow) {
+    if (attachments.length < 2 || attachments.length > 10) {
+      throw ArgumentError('A native sticker row requires 2 to 10 attachments.');
+    }
+  }
+
+  void ensureAttachmentGuids() {
+    final tempGuid = message.guid;
+    if (tempGuid == null) throw StateError('A sticker row requires a stable message GUID.');
+    message.metadata = {...?message.metadata, 'nativeStickerRowSend': true};
+    for (var i = 0; i < attachments.length; i++) {
+      attachments[i].guid ??= '$tempGuid-sticker-$i';
+      attachments[i].metadata = {
+        ...?attachments[i].metadata,
+        'nativeStickerRowSend': true,
+        'preserveOriginalBytes': true,
+        'isSticker': true,
+        'stickerRow': {'index': i, 'count': attachments.length, 'partIndex': 0},
+      };
+    }
+    final guids = attachments.map((attachment) => attachment.guid).toSet();
+    if (guids.length != attachments.length || guids.contains(tempGuid)) {
+      throw StateError('Sticker row attachments require distinct GUIDs separate from the message GUID.');
+    }
+  }
 }

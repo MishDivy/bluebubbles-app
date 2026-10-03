@@ -43,18 +43,20 @@ class Run {
 }
 
 class Attributes {
-  Attributes({this.messagePart, this.attachmentGuid, this.mention, this.audioTranscript});
+  Attributes({this.messagePart, this.attachmentGuid, this.mention, this.audioTranscript, this.emojiImage = false});
 
   final int? messagePart;
   final String? attachmentGuid;
   final String? mention;
   final String? audioTranscript;
+  final bool emojiImage;
 
   factory Attributes.fromMap(Map<String, dynamic> json) => Attributes(
       messagePart: json["__kIMMessagePartAttributeName"],
       attachmentGuid: json["__kIMFileTransferGUIDAttributeName"],
       mention: json["__kIMMentionConfirmedMention"],
-      audioTranscript: json["IMAudioTranscription"]);
+      audioTranscript: json["IMAudioTranscription"],
+      emojiImage: json["__kIMEmojiImageAttributeName"] == 1 || json["__kIMEmojiImageAttributeName"] == true);
 
   Map<String, dynamic> toMap() {
     // Only include non-null values
@@ -63,6 +65,7 @@ class Attributes {
     if (attachmentGuid != null) map["__kIMFileTransferGUIDAttributeName"] = attachmentGuid;
     if (mention != null) map["__kIMMentionConfirmedMention"] = mention;
     if (audioTranscript != null) map["IMAudioTranscription"] = audioTranscript;
+    if (emojiImage) map["__kIMEmojiImageAttributeName"] = 1;
     return map;
   }
 }

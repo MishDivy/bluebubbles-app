@@ -170,6 +170,8 @@ class SettingsService {
             response.data['data']['privateApiCapabilities']['customEmojiReactions'] == true,
         'stickerSending': response.data['data']['privateApiCapabilities'] is Map &&
             response.data['data']['privateApiCapabilities']['stickerSending'] == true,
+        'stickerRows': response.data['data']['privateApiCapabilities'] is Map &&
+            response.data['data']['privateApiCapabilities']['stickerRows'] == true,
         'recommendPrivateApi': settings.finishedSetup.value &&
             settings.reachedConversationList.value &&
             !settings.enablePrivateAPI.value &&
@@ -200,6 +202,7 @@ class SettingsService {
       serverVersionCode: detailsDict['serverVersionCode'] as int,
       customEmojiReactions: detailsDict['customEmojiReactions'] == true,
       stickerSending: detailsDict['stickerSending'] == true,
+      stickerRows: detailsDict['stickerRows'] == true,
     );
     _serverDetails.value = details;
 

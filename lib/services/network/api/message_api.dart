@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 import 'package:bluebubbles/services/network/api/base_api.dart';
@@ -221,7 +222,7 @@ class MessageApi {
   }
 
   /// Checks the connected helper instead of trusting the isolate's cached details.
-  Future<bool> supportsStickerSending({CancelToken? cancelToken}) async {
+  Future<Map<String, bool>> stickerCapabilities({CancelToken? cancelToken}) async {
     final info = await _svc.runApiGuarded(() async {
       final response = await _svc.dio.get(
         '${_svc.apiRoot}/server/info',
@@ -232,7 +233,41 @@ class MessageApi {
     });
     final data = info.data is Map ? info.data['data'] : null;
     final capabilities = data is Map ? data['privateApiCapabilities'] : null;
-    return capabilities is Map && capabilities['stickerSending'] == true;
+    return {
+      for (final key in ['stickerSending', 'stickerRows', 'stickerPlacement', 'stickerReactions'])
+        key: capabilities is Map && capabilities[key] == true,
+    };
+  }
+
+  Future<bool> supportsStickerSending({CancelToken? cancelToken}) async =>
+      (await stickerCapabilities(cancelToken: cancelToken))['stickerSending'] == true;
+
+  /// Uploads an ordered native row as one message, with one stable temp GUID.
+  Future<Response> sendStickerRow(String chatGuid, String tempGuid, List<PlatformFile> files,
+      {List<String?>? stickerLabels, CancelToken? cancelToken}) async {
+    if (files.length < 2 || files.length > 10) throw ArgumentError('A sticker row requires 2 to 10 stickers.');
+    if (stickerLabels != null && stickerLabels.length != files.length) {
+      throw ArgumentError('Each sticker label must correspond to its file.');
+    }
+    return _svc.runApiGuarded(() async {
+      if ((await stickerCapabilities(cancelToken: cancelToken))['stickerRows'] != true) {
+        throw UnsupportedError('The connected server helper has not enabled native sticker rows.');
+      }
+      final form = FormData.fromMap({
+        'chatGuid': chatGuid,
+        'tempGuid': tempGuid,
+        'stickers': jsonEncode([
+          for (var i = 0; i < files.length; i++)
+            {'name': files[i].name, 'stickerLabel': ?stickerLabels?[i]},
+        ]),
+        for (var i = 0; i < files.length; i++)
+          'attachment$i': await MultipartFile.fromFile(files[i].path!, filename: files[i].name),
+      });
+      final response = await _svc.dio.post('${_svc.apiRoot}/message/send-sticker-row',
+          queryParameters: _svc.buildQueryParams(), data: form, cancelToken: cancelToken,
+          options: Options(headers: _svc.headers));
+      return _svc.returnSuccessOrError(response);
+    }, retryOn502: false);
   }
 
   /// Sends original sticker bytes once. An ambiguous response must not resend.

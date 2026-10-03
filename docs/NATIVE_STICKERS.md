@@ -13,10 +13,10 @@ Preserve its bytes, alpha and animation, then use a native Messages file transfe
 with sticker metadata. Do not flatten several stickers into a collage or silently
 send a photo when the native path is unavailable.
 
-The first candidate supports one standalone sticker. That is one step toward
-the requested parity, not completion of the feature. The rest of the scope stays
-in the acceptance table below. Unverified operations must not be exposed as
-working features.
+Implementation is progressing through standalone stickers, one-message rows,
+placement and sticker tapbacks. A passing build does not complete the feature.
+The acceptance table below tracks the remaining device checks. Experimental
+capabilities stay separate from the production helper and from delivery evidence.
 
 | Behavior | Evidence required before enabling or merging |
 | --- | --- |
@@ -46,6 +46,14 @@ Fields: `attachment`, `chatGuid`, `tempGuid`, `name`, and optional `stickerLabel
 Only one standalone sticker is supported by this contract. Placement, rows,
 audio, message effects and reaction fields are not accepted.
 
+Rows use `POST /api/v1/message/send-sticker-row` with `chatGuid`, one `tempGuid`,
+an ordered JSON `stickers` array of `{name, stickerLabel?}`, and indexed multipart
+files `attachment0` through `attachmentN-1`. A row contains 2 to 10 original
+assets, each within the single-sticker limit, and at most 5 MiB overall. It is
+one queued message and one native send, not a sequence of separate messages.
+The helper returns the exact message GUID and ordered attachment GUIDs. The
+server verifies their linkage; Android reconciles each distinct local asset.
+
 The server forwards `send-sticker` with `chatGuid`, a server-owned staged
 `filePath`, optional `filename` and optional `stickerLabel`. The helper returns
 the constructed message's own `identifier`, not a chat-wide last-message value.
@@ -56,8 +64,10 @@ chat. This confirms a local send, not recipient delivery.
 Messages helper before native sending is offered. Version strings are not
 capabilities. Missing, stale or disconnected helpers disable sending. The helper
 requires an experimental build opt-in and matching runtime method signatures.
-`stickerPlacement`, `stickerRows` and `stickerReactions` remain false until their
-own implementation and acceptance evidence exist.
+Each additional operation has its own capability. Experimental row builds now
+advertise `stickerRows` when their native signatures match. Placement and tapback
+work must pass their own guards and tests; the production helper still has none
+of these sticker-sending capabilities enabled.
 
 Uploads are bounded to 500 KiB, PNG/APNG, GIF or JPEG, at most 618 pixels on either
 axis, 100 frames and 25 million aggregate decoded pixels. These are conservative
@@ -108,6 +118,36 @@ needed regression fixture into synthetic data, removing addresses, chat content,
 host paths, tokens and identifying pack artwork. Inspection never writes to the
 Messages database.
 
+The owner has supplied standalone, three-sticker-row and placement fixtures.
+Read-only inspection confirmed that the row is one message with three distinct
+attachments, each at part 0 with the emoji-image attribute. Multiple placements
+use independent type-1000 messages. Removing placements on the iPad did not
+establish a remote deletion event. Android therefore treats hiding a placement
+as device-local and keeps that action separate from removing a sticker tapback.
+
+A sticker selected through the iPad reaction picker also arrived as type `1000`,
+with `sir=true` in its sticker metadata. It is an independent reaction-layout
+sticker, not proof of a type-2007 tapback. After the owner removed one self-chat
+copy through Sticker Details, the Mac still had both copies and no new related
+removal event. Preserve type-1000 messages by their own GUIDs even when they have
+the reaction flag. Never use the type-3007 endpoint to remove them.
+
+An isolated synthetic `IMStickerTapback` constructor probe separately returned
+native types `2007` and `3007` for add and remove descriptors. Both representations
+therefore exist on the tested Mac. Device acceptance must distinguish their
+layout, replacement, and removal behavior rather than treating them as aliases.
+
+After the owner's restart on 2026-10-03, the Mac reported macOS 27.0.1 (26A434)
+and the existing production service passed its authenticated readiness check.
+Isolated native probes confirmed sticker-tapback signatures, the association-aware
+message constructor, and geometry field/key names. Synthetic layout calculations
+confirmed centered fractional positioning and radian rotation for layout intents
+0. Native scale, orientation and recipient rendering still need acceptance.
+Fixture metadata can use either numeric strings (position version 0) or numbers
+(version 1); receive code must preserve both without inventing absent values.
+`pid` denotes a pack identifier; `sbid` and attribution's `bundle-id` identify the
+source bundle. Do not describe the pack identifier as an App Store bundle ID.
+
 ## Review and release gates
 
 - Offline tests cover validation, folder boundaries, explicit capability checks,
@@ -139,3 +179,6 @@ daemon, or merge the unrelated upstream helper rewrite as an upgrade shortcut.
   it does not prove sticker tapback support or compatibility with this Mac.
 - Companion helper `docs/custom-reactions.md` records the macOS 27 probe and
   distinguishes placement `1000` from sticker tapback `2007`/`3007`.
+- [imbridge's pinned sticker tapback patch](https://github.com/christianblandford/imbridge/blob/df8c9601b05f2fc2daef070a07f4f883cee350ba/helper/patches/0010-sticker-tapbacks.patch)
+  identifies the native tapback constructor and sender. Adaptations retain its
+  Apache license and notice. Its chat-wide last-message fallback is not used.

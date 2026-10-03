@@ -18,10 +18,13 @@ class StickerBrowserController extends StatefulController {
   final error = RxnString();
   final capabilityReason = RxnString();
   final selected = Rxn<StickerFolderEntry>();
+  final selection = <StickerFolderEntry>[].obs;
   final nativeSticker = true.obs;
   final busy = false.obs;
   final loading = false.obs;
   final supported = false.obs;
+  final rowSupported = false.obs;
+  bool get canSendNative => selection.length > 1 ? rowSupported.value : supported.value;
   final hasMore = false.obs;
   int _offset = 0;
   int _generation = 0;
@@ -48,18 +51,22 @@ class StickerBrowserController extends StatefulController {
   Future<void> checkCapability() async {
     if (!chat.isIMessage) {
       supported.value = false;
+      rowSupported.value = false;
       capabilityReason.value = 'Native stickers require an iMessage conversation.';
       return;
     }
     try {
-      final value = await HttpSvc.message.supportsStickerSending();
+      final capabilities = await HttpSvc.message.stickerCapabilities();
+      final value = capabilities['stickerSending'] == true;
       if (!active) return;
       supported.value = value;
+      rowSupported.value = capabilities['stickerRows'] == true;
       capabilityReason.value = value ? null : 'The connected server helper has not enabled native sticker sending.';
     } catch (_) {
       if (!active) return;
       supported.value = false;
       capabilityReason.value = 'Could not check native sticker support. Reconnect and refresh.';
+      rowSupported.value = false;
     }
   }
 
@@ -91,6 +98,7 @@ class StickerBrowserController extends StatefulController {
       _offset = 0;
       hasMore.value = false;
       selected.value = null;
+      selection.clear();
       nativeSticker.value = true;
     }
     try {
@@ -114,7 +122,15 @@ class StickerBrowserController extends StatefulController {
       folder.value = entry.uri;
       unawaited(load(reset: true));
     } else {
-      selected.value = entry;
+      final index = selection.indexWhere((item) => item.uri == entry.uri);
+      if (index >= 0) {
+        selection.removeAt(index);
+      } else if (selection.length < 10) {
+        selection.add(entry);
+      } else {
+        error.value = 'A sticker row can contain at most 10 stickers.';
+      }
+      selected.value = selection.lastOrNull;
       nativeSticker.value = true;
     }
   }
@@ -127,11 +143,18 @@ class StickerBrowserController extends StatefulController {
 
   Future<void> send() async {
     final entry = selected.value;
-    if (entry == null || busy.value || (nativeSticker.value && !supported.value)) return;
+    if (entry == null || busy.value || (nativeSticker.value && !canSendNative)) return;
     busy.value = true;
     try {
-      await folders.send(chat, entry, nativeSticker: nativeSticker.value);
-      if (active) selected.value = null;
+      if (selection.length > 1) {
+        await folders.sendRow(chat, List.of(selection));
+      } else {
+        await folders.send(chat, entry, nativeSticker: nativeSticker.value);
+      }
+      if (active) {
+        selected.value = null;
+        selection.clear();
+      }
     } on PlatformException catch (e) {
       if (active) error.value = e.message;
     } catch (_) {

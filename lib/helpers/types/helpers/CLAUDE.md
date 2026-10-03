@@ -10,6 +10,7 @@ Pure functions, no state or service dependencies.
 | `date_helpers.dart` | `buildDate(DateTime, {forceYearWhenOlderThan})` — human-relative timestamps ("Just Now", "5 min", "Yesterday", "Mon 4:30") respecting 24-hour setting and chat skin |
 | `message_helper.dart` | `MessageHelper.bulkAddMessages()` — offloads bulk message insertion to isolate via `MessageInterface`; reports progress via callback |
 | `reaction_type.dart` | Pure classic/custom tapback validation, server normalization and preview formatting; custom graphemes persist in the existing message type field |
+| `sticker_helper.dart` | Safe attributed-run grouping, verified row ordering and exact per-asset confirmation mapping |
 | `contact_helpers.dart` | Phone number formatting via `dlibphonenumber`; locale-aware country codes; email detection |
 | `misc_helpers.dart` | `isNullOrEmpty(dynamic)` — null/blank/empty-collection check; `isNullOrZero()`; `mergeTopLevelDicts()` |
 

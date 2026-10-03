@@ -28,7 +28,7 @@ class StickerGrid extends StatelessWidget {
           () => InkWell(
             onTap: controller.busy.value || controller.loading.value ? null : () => controller.select(entry),
             child: Card(
-              color: controller.selected.value?.uri == entry.uri
+              color: controller.selection.any((item) => item.uri == entry.uri)
                   ? Theme.of(context).colorScheme.secondaryContainer
                   : null,
               child: Column(

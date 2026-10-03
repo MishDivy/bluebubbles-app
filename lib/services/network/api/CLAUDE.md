@@ -28,5 +28,6 @@ One file per server API domain. Each class implements `BaseApi` and is exposed o
 
 ## Related
 - `MessageApi.sendSticker` uploads only standalone sticker fields to `/message/send-sticker` after a live explicit helper capability check. It disables the generic 502 retry to avoid duplicate sends when the delivery outcome is unknown.
+- `sendStickerRow` posts ordered `stickers` JSON and `attachment0..N-1` to `/message/send-sticker-row`, independently gated by explicit `stickerRows`. It also disables automatic 502 resend.
 - Full method-level reference table: `../CLAUDE.md`
 - HTTP conventions (`runApiGuarded`, `buildQueryParams`, error handling): `.claude/rules/api.md`

@@ -18,6 +18,9 @@ It uses the persisted SAF read grant through `StickerFolderService`. Sticker sen
 separately and preserve the conversation's draft and reply. Native Send requires an iMessage
 chat and the connected helper's explicit `stickerSending` capability. Folder pages return at
 most 60 entries after scanning at most 200 provider rows; thumbnails load only visible tiles.
+Selection order defines a native row of 2–10 stickers, gated independently by `stickerRows`.
+Rows queue one message with distinct attachment GUIDs, not a series of single sends.
+The normal-image override is single-selection only; no selection is silently converted.
 
 ## Related
 - Compose bar: `../text_field/CLAUDE.md`

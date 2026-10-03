@@ -124,6 +124,9 @@ class AttachmentActions {
       // valid), then remove the stale temp-guid record.
       final conflicting = AttachmentActions.findOne(newAttachment.guid!);
       if (conflicting != null && conflicting.id != existing.id) {
+        if (existing.metadata?['isSticker'] == true || newAttachment.metadata?['isSticker'] == true) {
+          conflicting.metadata = {...?existing.metadata, ...?conflicting.metadata, ...?newAttachment.metadata};
+        }
         conflicting.originalROWID = newAttachment.originalROWID;
         conflicting.uti = newAttachment.uti;
         conflicting.mimeType = newAttachment.mimeType ?? conflicting.mimeType;
@@ -154,6 +157,9 @@ class AttachmentActions {
       existing.bytes = newAttachment.bytes;
       existing.webUrl = newAttachment.webUrl;
       existing.hasLivePhoto = newAttachment.hasLivePhoto;
+      if (existing.metadata?['isSticker'] == true || newAttachment.metadata?['isSticker'] == true) {
+        existing.metadata = {...?existing.metadata, ...?newAttachment.metadata};
+      }
       // Use synchronous put within the transaction to preserve the message relationship.
       // saveAsync(null) would run outside this transaction and would fail to find the
       // attachment by the new guid (since DB still has the old guid), stripping the

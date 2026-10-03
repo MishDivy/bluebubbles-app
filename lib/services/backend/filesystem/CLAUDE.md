@@ -6,7 +6,9 @@
 `sticker_folder_service.dart` is a stateless Android SAF channel facade. It lists bounded pages,
 reads visible sticker thumbnails, and stages only the explicitly selected original file before
 queuing its attachment. Native intent and original-byte preservation live in existing attachment
-metadata. Folder access belongs to the native persisted read grant, not a filesystem path.
+and message metadata. Rows stage only their 2–10 selections and queue one typed message.
+Staged originals are removed after outgoing preparation, including partial staging errors.
+Folder access belongs to the native persisted read grant, not a filesystem path.
 
 ## Responsibilities
 - Resolves platform-specific paths for attachments, cache, and temp files

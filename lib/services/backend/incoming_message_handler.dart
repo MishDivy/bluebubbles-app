@@ -6,6 +6,7 @@ import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/env.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 import 'package:bluebubbles/services/backend/interfaces/chat_interface.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
@@ -452,11 +453,6 @@ class IncomingMessageHandler {
       tag: _tag,
     );
 
-    // 1. Complete any pending send-progress tracker first.
-    if (tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
-      OutgoingMsgHandler.completeSendProgressIfExists(tempGuid, Origin.incomingMessageHandler);
-    }
-
     // 2. Locate the existing DB record.
     //    Try tempGuid first (outgoing echo), then fall back to the real GUID
     //    (read-receipt, edit, or a re-delivery of an already-saved message).
@@ -477,6 +473,22 @@ class IncomingMessageHandler {
       return;
     }
 
+    Map<String, String>? rowGuids;
+    final existingRow = StickerHelper.rowAttachments(existing.dbAttachments.toList());
+    final nativeRow = existing.metadata?['nativeStickerRowSend'] == true || (existingRow?.length ?? 0) > 1;
+    final pendingRow = existing.guid?.startsWith('temp') == true && nativeRow;
+    if (nativeRow && (pendingRow || payload.attachments.isNotEmpty)) {
+      try {
+        rowGuids = StickerHelper.rowReplacementGuids(existing.dbAttachments.toList(), payload.attachments);
+      } on StateError {
+        Logger.warn('Ignoring incomplete sticker row echo; awaiting verified confirmation', tag: _tag);
+        return;
+      }
+    }
+    if (!pendingRow && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
+      OutgoingMsgHandler.completeSendProgressIfExists(tempGuid, Origin.incomingMessageHandler);
+    }
+
     // 4. Chat hydration.
     final hydrated = await _hydrateChat(payload.chat, m);
     Chat c = hydrated.chat;
@@ -489,7 +501,10 @@ class IncomingMessageHandler {
     await _replaceMessage(c, existingGuid, existing, m);
 
     // 6. Persist attachment GUID swaps (e.g. temp attachment → real GUID).
-    await _replaceAttachments(c, existingGuid, existing, m, replacementAttachments);
+    await _replaceAttachments(c, existingGuid, existing, m, replacementAttachments, rowGuids: rowGuids);
+    if (pendingRow && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
+      OutgoingMsgHandler.completeSendProgressIfExists(tempGuid, Origin.incomingMessageHandler);
+    }
 
     // 7. Drive UI reactivity, if not in a background isolate.
     if (!isIsolate) {
@@ -608,6 +623,7 @@ class IncomingMessageHandler {
     Message existing,
     Message replacement,
     List<Attachment?> replacementAttachments,
+    {Map<String, String>? rowGuids}
   ) async {
     for (int i = 0; i < replacementAttachments.length; i++) {
       final newAttachment = replacementAttachments[i];
@@ -615,7 +631,9 @@ class IncomingMessageHandler {
 
       // Resolve which local GUID currently owns this attachment slot.
       final String attachmentExistingGuid;
-      if (existingGuid.startsWith('temp-')) {
+      if (rowGuids != null) {
+        attachmentExistingGuid = rowGuids[newAttachment.guid]!;
+      } else if (existingGuid.startsWith('temp-')) {
         attachmentExistingGuid = existingGuid;
       } else if (existing.dbAttachments.isNotEmpty && i < existing.dbAttachments.length) {
         attachmentExistingGuid = existing.dbAttachments[i].guid ?? existingGuid;

@@ -48,8 +48,10 @@ class _AttachmentHolderState extends State<AttachmentHolder> with ThemeHelpers {
   Message? get newerMessage => controller.newMessage;
 
   Attachment get attachment =>
-      message.dbAttachments.firstWhereOrNull((e) => e.id == part.attachments.first.id) ??
-      MessagesSvc(_chatGuid).struct.attachments.firstWhereOrNull((e) => e.id == part.attachments.first.id) ??
+      message.dbAttachments.firstWhereOrNull((e) => e.guid == part.attachments.first.guid ||
+          (e.id != null && e.id == part.attachments.first.id)) ??
+      MessagesSvc(_chatGuid).struct.attachments.firstWhereOrNull((e) => e.guid == part.attachments.first.guid ||
+          (e.id != null && e.id == part.attachments.first.id)) ??
       part.attachments.first;
 
   String? get audioTranscript => getAudioTranscriptsFromAttributedBody(message.attributedBody)[part.part];

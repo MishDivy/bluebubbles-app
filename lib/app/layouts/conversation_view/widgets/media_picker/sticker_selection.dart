@@ -15,23 +15,40 @@ class StickerSelection extends StatelessWidget {
         padding: const EdgeInsets.all(12),
         child: Column(
           children: [
-            Text(selected.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            Text(
+              controller.selection.length > 1
+                  ? '${controller.selection.length} stickers, in selection order'
+                  : selected.name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
             Row(
               children: [
                 Checkbox(
                   value: !controller.nativeSticker.value,
-                  onChanged: controller.busy.value ? null : (value) => controller.nativeSticker.value = value != true,
+                  onChanged: controller.busy.value || controller.selection.length > 1
+                      ? null
+                      : (value) => controller.nativeSticker.value = value != true,
                 ),
                 const Expanded(child: Text('Send as normal image')),
                 FilledButton(
-                  onPressed: controller.busy.value || (controller.nativeSticker.value && !controller.supported.value)
+                  onPressed: controller.busy.value || (controller.nativeSticker.value && !controller.canSendNative)
                       ? null
                       : controller.send,
-                  child: Text(controller.nativeSticker.value ? 'Send sticker' : 'Send image'),
+                  child: Text(
+                    controller.selection.length > 1
+                        ? 'Send row'
+                        : controller.nativeSticker.value
+                        ? 'Send sticker'
+                        : 'Send image',
+                  ),
                 ),
               ],
             ),
             const Text('Sends separately from your draft and reply. Up to 500 KiB and 618 × 618 per file.'),
+            if (controller.selection.length > 1) const Text('Normal image sending is available with one selection.'),
+            if (controller.selection.length > 1 && !controller.rowSupported.value)
+              const Text('The connected helper has not enabled native sticker rows.'),
           ],
         ),
       ),

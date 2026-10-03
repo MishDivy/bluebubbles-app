@@ -1,5 +1,20 @@
 import 'dart:io';
 import 'dart:async';
+import 'dart:convert';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
+import 'package:bluebubbles/helpers/types/helpers/message_helper.dart';
+import 'package:bluebubbles/helpers/ui/reaction_helpers.dart';
+import 'package:bluebubbles/app/state/message_state.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_icon.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/sticker_asset_image.dart';
+import 'package:bluebubbles/services/ui/chat/chats_service.dart';
+import 'package:bluebubbles/services/isolates/global_isolate.dart';
+import 'package:bluebubbles/database/database.dart';
+import 'package:bluebubbles/services/backend/settings/shared_preferences_service.dart';
+import 'package:bluebubbles/services/backend/settings/actions/shared_preferences_messaging_actions.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/in_memory_shared_preferences_async.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_async_platform_interface.dart';
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_browser.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_browser_controller.dart';
@@ -26,9 +41,10 @@ import 'package:image/image.dart' as image;
 class _OfflineApi implements BaseApi {
   final Object? capability;
   final int postStatus;
+  final Object? rowCapability;
   final requests = <RequestOptions>[];
   final retries = <bool>[];
-  _OfflineApi({this.capability = true, this.postStatus = 200}) {
+  _OfflineApi({this.capability = true, this.rowCapability = false, this.postStatus = 200}) {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) {
@@ -40,7 +56,7 @@ class _OfflineApi implements BaseApi {
               data: {
                 'data': {
                   'guid': 'sent',
-                  'privateApiCapabilities': {'stickerSending': capability},
+                  'privateApiCapabilities': {'stickerSending': capability, 'stickerRows': rowCapability},
                 },
               },
             ),
@@ -88,6 +104,7 @@ class _Themes extends ThemesService {
 
 class _Folders extends StickerFolderService {
   int sends = 0;
+  final rows = <List<StickerFolderEntry>>[];
   bool? sentNative;
   String? folder = 'content://test/tree/selected';
   @override
@@ -113,6 +130,9 @@ class _Folders extends StickerFolderService {
     sends++;
     sentNative = nativeSticker;
   }
+
+  @override
+  Future<void> sendRow(Chat chat, List<StickerFolderEntry> entries) async => rows.add(entries);
 }
 
 class _DeferredFolders extends _Folders {
@@ -122,8 +142,29 @@ class _DeferredFolders extends _Folders {
       (pending[uri] = Completer<StickerFolderPage>()).future;
 }
 
+class _AttachmentBox implements Box<Attachment> {
+  final attachments = <int, Attachment>{};
+  @override
+  Attachment? get(int id) => attachments[id];
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+class _DeferredAttachmentIsolate extends GlobalIsolate {
+  final pending = Completer<int?>();
+  int calls = 0;
+  @override
+  Future<T> send<T>(IsolateRequestType type, {dynamic input, Duration? customTimeout}) async {
+    expect(type, IsolateRequestType.findOneAttachmentAsync);
+    calls++;
+    return (await pending.future) as T;
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
+  final attachmentBox = _AttachmentBox();
+  setUpAll(() => Database.attachments = attachmentBox);
   late Directory directory;
   late File file;
   setUp(() async {
@@ -137,6 +178,384 @@ void main() {
   });
 
   PlatformFile selected() => PlatformFile(name: 'animated.gif', path: file.path, size: 9);
+
+  test('row uses one ordered multipart request and never retries 502', () async {
+    final api = _OfflineApi(rowCapability: true, postStatus: 502);
+    await expectLater(
+      MessageApi(api).sendStickerRow('chat', 'temp-row', [selected(), selected()], stickerLabels: ['First', null]),
+      throwsA(isA<Response>()),
+    );
+    final posts = api.requests.where((request) => request.method == 'POST').toList();
+    expect(posts, hasLength(1));
+    expect(posts.single.path, endsWith('/message/send-sticker-row'));
+    final form = posts.single.data as FormData;
+    expect(form.files.map((file) => file.key), ['attachment0', 'attachment1']);
+    expect(jsonDecode(form.fields.singleWhere((entry) => entry.key == 'stickers').value), [
+      {'name': 'animated.gif', 'stickerLabel': 'First'},
+      {'name': 'animated.gif'},
+    ]);
+    expect(form.fields.map((field) => field.key), ['chatGuid', 'tempGuid', 'stickers']);
+    expect(api.retries.where((retry) => !retry), hasLength(1));
+  });
+
+  test('row capability is explicit and independent of single sending', () async {
+    for (final capability in [false, null, 'true', 1]) {
+      final api = _OfflineApi(capability: true, rowCapability: capability);
+      await expectLater(
+        MessageApi(api).sendStickerRow('chat', 'temp-row', [selected(), selected()]),
+        throwsA(isA<UnsupportedError>()),
+      );
+      expect(api.requests.where((request) => request.method == 'POST'), isEmpty);
+    }
+  });
+
+  test('observed three all-part-zero emoji runs retain transfer order and no placeholders', () {
+    final assets = ['C', 'A', 'B'].map((guid) => Attachment(guid: guid, mimeType: 'image/png')).toList();
+    final body = AttributedBody.fromMap({
+      'string': '\uFFFC\uFFFC\uFFFC',
+      'runs': [
+        for (var i = 0; i < 3; i++)
+          {
+            'range': [i, 1],
+            'attributes': {
+              '__kIMMessagePartAttributeName': 0,
+              '__kIMFileTransferGUIDAttributeName': ['A', 'B', 'C'][i],
+              '__kIMEmojiImageAttributeName': 1,
+            },
+          },
+      ],
+    });
+    final parts = StickerHelper.attributedParts(AttributedBody.fromMap(body.toMap()), assets);
+    expect(parts, hasLength(1));
+    expect(parts.single.part, 0);
+    expect(parts.single.attachments.map((attachment) => attachment.guid), ['A', 'B', 'C']);
+    expect(parts.single.text, isNull);
+    expect(parts.single.isInlineSticker, isTrue);
+    expect(parts.single.isMediaGallery, isFalse);
+    expect(parts.single.isMediaOnlyPart, isFalse);
+  });
+
+  test('row fallback requires exact indexed metadata, not database order', () {
+    final assets = [2, 0, 1]
+        .map(
+          (i) => Attachment(
+            guid: 'asset-$i',
+            metadata: {
+              'sticker': {
+                'row': {'index': i, 'count': 3, 'partIndex': 0},
+              },
+            },
+          ),
+        )
+        .toList();
+    expect(StickerHelper.rowAttachments(assets)!.map((attachment) => attachment.guid), [
+      'asset-0',
+      'asset-1',
+      'asset-2',
+    ]);
+    assets.first.metadata = {
+      'stickerRow': {'index': 0, 'count': 3, 'partIndex': 0},
+    };
+    expect(StickerHelper.rowAttachments(assets), isNull);
+  });
+
+  test('one confirmation reconciles exactly the ordered row assets, including duplicate names', () {
+    final data = {
+      'stickerLayout': {
+        'attachmentGuids': ['A', 'B'],
+        'partIndex': 0,
+      },
+      'attachments': [
+        {'guid': 'B', 'transferName': 'same.png', 'mimeType': null, 'metadata': null, 'dateCreated': null},
+        {'guid': 'A', 'transferName': 'same.png', 'mimeType': null, 'metadata': null, 'dateCreated': null},
+      ],
+    };
+    final ordered = StickerHelper.confirmedRowAttachments(data, 2);
+    expect(ordered.map((attachment) => attachment.guid), ['A', 'B']);
+    expect(StickerHelper.rowAttachments(ordered), ordered);
+    expect(() => StickerHelper.confirmedRowAttachments(data, 3), throwsStateError);
+    expect(
+      () => StickerHelper.confirmedRowAttachments({
+        'stickerLayout': {
+          'attachmentGuids': ['A', 'A'],
+          'partIndex': 0,
+        },
+        'attachments': data['attachments'],
+      }, 2),
+      throwsStateError,
+    );
+    expect(
+      () => StickerHelper.confirmedRowAttachments({
+        'stickerLayout': {
+          'attachmentGuids': ['A', 'missing'],
+          'partIndex': 0,
+        },
+        'attachments': data['attachments'],
+      }, 2),
+      throwsStateError,
+    );
+  });
+
+  test('malformed and text-plus-sticker runs keep text separate from object placeholders', () {
+    final body = AttributedBody(
+      string: 'Hi\uFFFC!',
+      runs: [
+        Run(range: [-1, 3], attributes: Attributes(messagePart: 0)),
+        Run(range: [0, 2], attributes: Attributes(messagePart: 0)),
+        Run(
+          range: [2, 1],
+          attributes: Attributes(messagePart: 0, attachmentGuid: 'A', emojiImage: true),
+        ),
+        Run(range: [3, 1], attributes: Attributes(messagePart: 0)),
+        Run(range: [4, 900], attributes: Attributes(messagePart: 0)),
+      ],
+    );
+    final part = StickerHelper.attributedParts(body, [Attachment(guid: 'A')]).single;
+    expect(part.text, 'Hi!');
+    expect(part.attachments.single.guid, 'A');
+    expect(part.isInlineSticker, isTrue);
+  });
+
+  test('ordinary image and mention runs retain their part semantics', () {
+    final part = StickerHelper.attributedParts(
+      AttributedBody(
+        string: 'Joe\uFFFC',
+        runs: [
+          Run(
+            range: [0, 3],
+            attributes: Attributes(messagePart: 0, mention: 'joe@example.invalid'),
+          ),
+          Run(
+            range: [3, 1],
+            attributes: Attributes(messagePart: 1, attachmentGuid: 'photo'),
+          ),
+        ],
+      ),
+      [Attachment(guid: 'photo', mimeType: 'image/jpeg')],
+    );
+    expect(part, hasLength(2));
+    expect(part.first.text, 'Joe');
+    expect(part.first.mentions.single.range, [0, 3]);
+    expect(part.last.attachments.single.guid, 'photo');
+    expect(part.last.isInlineSticker, isFalse);
+    expect(part.last.isMediaOnlyPart, isTrue);
+  });
+
+  test('socket-first row mapping confirms exact N assets independent of both database orders', () {
+    List<Attachment> row(List<int> order, String prefix) => order
+        .map(
+          (i) => Attachment(
+            guid: '$prefix-$i',
+            metadata: {
+              'stickerRow': {'index': i, 'count': 3, 'partIndex': 0},
+            },
+          ),
+        )
+        .toList();
+    final before = row([2, 0, 1], 'temp');
+    final after = row([1, 2, 0], 'real');
+    expect(StickerHelper.rowReplacementGuids(before, after), {
+      'real-0': 'temp-0',
+      'real-1': 'temp-1',
+      'real-2': 'temp-2',
+    });
+    expect(StickerHelper.rowReplacementGuids(after, after.reversed.toList()), {
+      'real-0': 'real-0', 'real-1': 'real-1', 'real-2': 'real-2',
+    });
+    expect(() => StickerHelper.rowReplacementGuids(before, after.take(2).toList()), throwsStateError);
+  });
+
+  test('missing cached attachment hydrates asynchronously once and disposal ignores late results', () async {
+    GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
+    GetIt.I.registerSingleton<ChatsService>(ChatsService());
+    final isolate = _DeferredAttachmentIsolate();
+    GetIt.I.registerSingleton<GlobalIsolate>(isolate);
+    final body = AttributedBody(
+      string: '\uFFFC',
+      runs: [
+        Run(
+          range: [0, 1],
+          attributes: Attributes(messagePart: 0, attachmentGuid: 'late', emojiImage: true),
+        ),
+      ],
+    );
+    final state = MessageState(Message(guid: 'parent', isFromMe: true, attributedBody: [body]));
+    expect(state.attributedBodyToMessagePart(body).single.attachments, isEmpty);
+    expect(state.attributedBodyToMessagePart(body).single.attachments, isEmpty);
+    expect(isolate.calls, 1);
+    attachmentBox.attachments[7] = Attachment(id: 7, guid: 'late');
+    isolate.pending.complete(7);
+    await Future<void>.delayed(Duration.zero);
+    expect(state.parts.single.attachments.single.guid, 'late');
+    expect(state.parts.single.attachments.single.isSticker, isTrue);
+    state.onClose();
+
+    await GetIt.I.unregister<GlobalIsolate>();
+    final lateIsolate = _DeferredAttachmentIsolate();
+    GetIt.I.registerSingleton<GlobalIsolate>(lateIsolate);
+    final disposed = MessageState(Message(guid: 'disposed', isFromMe: true, attributedBody: [body]));
+    disposed.attributedBodyToMessagePart(body);
+    disposed.onClose();
+    lateIsolate.pending.complete(7);
+    await Future<void>.delayed(Duration.zero);
+    expect(disposed.parts, isEmpty);
+  });
+
+  testWidgets('sticker tapback renders original artwork rather than the emoji fallback', (tester) async {
+    final attachment = Attachment(
+      guid: 'synthetic-sticker',
+      bytes: Uint8List.fromList(image.encodePng(image.Image(width: 2, height: 2))),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: SizedBox(
+          width: 30,
+          height: 30,
+          child: ReactionIcon(type: 'sticker-reaction', color: Colors.white, attachment: attachment),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(find.byType(StickerAssetImage), findsOneWidget);
+    expect(find.byType(Image), findsOneWidget);
+    expect(find.text('💬'), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  test('ordered multi-selection toggles, caps at ten, requires rows support and sends once', () async {
+    final folders = _Folders();
+    final controller = StickerBrowserController(Chat(guid: 'iMessage;-;chat'), folders);
+    final entries = List.generate(
+      11,
+      (i) => StickerFolderEntry(uri: 'sticker-$i', name: '$i.png', directory: false, size: 1),
+    );
+    controller.supported.value = true;
+    controller.select(entries[1]);
+    controller.select(entries[0]);
+    expect(controller.selection.map((entry) => entry.uri), ['sticker-1', 'sticker-0']);
+    await controller.send();
+    expect(folders.rows, isEmpty);
+    controller.select(entries[1]);
+    expect(controller.selection.single.uri, 'sticker-0');
+    for (final entry in entries.skip(1)) {
+      controller.select(entry);
+    }
+    expect(controller.selection, hasLength(10));
+    controller.rowSupported.value = true;
+    expect(folders.rows, isEmpty);
+    await controller.send();
+    expect(folders.rows, hasLength(1));
+    expect(folders.rows.single, hasLength(10));
+    expect(folders.sends, 0);
+    expect(controller.selection, isEmpty);
+    controller.onClose();
+  });
+
+  test('partial row staging failure cleans only its prepared originals', () async {
+    const channel = MethodChannel('test-partial-sticker-row');
+    final staged = await File('${directory.path}/staged.gif').writeAsBytes([1, 2, 3]);
+    var calls = 0;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
+      expect(call.method, 'stage-sticker');
+      calls++;
+      if (calls == 2) throw PlatformException(code: 'revoked', message: 'Folder access was revoked.');
+      return {'path': staged.path, 'name': 'staged.gif', 'size': 3};
+    });
+    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
+    await expectLater(const StickerFolderService(channel: channel).sendRow(Chat(guid: 'chat'), [
+      const StickerFolderEntry(uri: 'one', name: 'one.gif', directory: false, size: 3),
+      const StickerFolderEntry(uri: 'two', name: 'two.gif', directory: false, size: 3),
+    ]), throwsA(isA<PlatformException>()));
+    expect(calls, 2);
+    expect(await staged.exists(), isFalse);
+    expect(await file.exists(), isTrue);
+  });
+
+  test('row intent survives serialization with distinct asset and message GUIDs', () {
+    final item = OutgoingStickerRow(
+      chat: Chat(guid: 'chat'),
+      message: Message(guid: 'temp-row'),
+      attachments: [
+        StickerFolderService.buildAttachment(selected(), nativeSticker: false),
+        StickerFolderService.buildAttachment(selected(), nativeSticker: false),
+      ],
+    );
+    item.ensureAttachmentGuids();
+    expect(item.attachments.map((attachment) => attachment.guid).toSet(), hasLength(2));
+    expect(item.attachments.every((attachment) => attachment.guid != item.message.guid), isTrue);
+    for (final attachment in item.attachments) {
+      final metadata = jsonDecode(attachment.toMap()['metadata']);
+      expect(metadata['nativeStickerRowSend'], isTrue);
+      expect(metadata['preserveOriginalBytes'], isTrue);
+    }
+    expect(StickerHelper.rowAttachments(item.attachments), hasLength(2));
+    expect(jsonDecode(item.message.toMap()['metadata'])['nativeStickerRowSend'], isTrue);
+  });
+
+  test('local placement hiding is bounded, deduplicated and scoped to server and chat', () async {
+    final previous = SharedPreferencesAsyncPlatform.instance;
+    SharedPreferencesAsyncPlatform.instance = InMemorySharedPreferencesAsync.empty();
+    addTearDown(() => SharedPreferencesAsyncPlatform.instance = previous);
+    final service = SharedPreferencesService();
+    // Use the same categorized helper with an isolated in-memory cache.
+    // ignore: deprecated_member_use_from_same_package
+    service.i = await SharedPreferencesWithCache.create(cacheOptions: const SharedPreferencesWithCacheOptions());
+    final prefs = SharedPreferencesMessagingActions(service);
+    await prefs.hideStickerPlacement('server-a', 'chat-a', 'placement');
+    await prefs.hideStickerPlacement('server-a', 'chat-a', 'placement');
+    expect(prefs.isStickerPlacementHidden('server-a', 'chat-a', 'placement'), isTrue);
+    expect(prefs.isStickerPlacementHidden('server-b', 'chat-a', 'placement'), isFalse);
+    expect(prefs.isStickerPlacementHidden('server-a', 'chat-b', 'placement'), isFalse);
+    for (var i = 0; i < 1000; i++) {
+      await prefs.hideStickerPlacement('server-a', 'chat-a', 'placement-$i');
+    }
+    expect(prefs.isStickerPlacementHidden('server-a', 'chat-a', 'placement'), isFalse);
+    expect(prefs.isStickerPlacementHidden('server-a', 'chat-a', 'placement-999'), isTrue);
+  });
+
+  test('placements keep independent GUIDs while sticker tapbacks occupy actor slots', () {
+    GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
+    Message associated(String guid, String type, int time) => Message(
+      guid: guid,
+      isFromMe: true,
+      associatedMessageGuid: 'parent',
+      associatedMessageType: type,
+      associatedMessagePart: 0,
+      dateCreated: DateTime.fromMillisecondsSinceEpoch(time),
+    );
+    final first = associated('placement-1', 'sticker', 1);
+    final second = associated('placement-2', 'sticker', 2);
+    first.metadata = {'sticker': {'placement': {'sir': false, 'spv': 0}}};
+    second.metadata = {'sticker': {'placement': {'sir': true, 'spv': 0}}};
+    expect(ReactionTypes.fromServer(1000, null), 'sticker');
+    expect(ReactionTypes.isReaction(first.associatedMessageType), isFalse);
+    expect(ReactionTypes.isReaction(second.associatedMessageType), isFalse);
+    final state = MessageState(Message(guid: 'parent', isFromMe: true));
+    state.addAssociatedMessageInternal(associated('temp-placement', 'sticker', 0));
+    state.addAssociatedMessageInternal(first);
+    state.addAssociatedMessageInternal(second);
+    expect(state.associatedMessages, hasLength(3));
+    expect(MessageHelper.normalizedAssociatedMessages([first, second, first]), hasLength(2));
+    expect(
+      getUniqueReactionMessages([
+        first,
+        second,
+        associated('sticker-slot', 'sticker-reaction', 3),
+        associated('classic-slot', 'love', 4),
+      ]).map((message) => message.guid),
+      ['classic-slot'],
+    );
+    expect(
+      getUniqueReactionMessages([
+        associated('sticker-slot', 'sticker-reaction', 3),
+        associated('remove-slot', '-sticker-reaction', 4),
+      ]),
+      isEmpty,
+    );
+    state.removeAssociatedMessageInternal(first);
+    expect(state.associatedMessages.map((message) => message.guid), ['temp-placement', 'placement-2']);
+  });
 
   test('native form retains original bytes, auth and only standalone fields', () async {
     final api = _OfflineApi();

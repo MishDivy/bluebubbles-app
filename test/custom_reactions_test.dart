@@ -62,7 +62,7 @@ void main() {
       }
       expect(ReactionTypes.fromServer('love', '🫡'), 'love');
       expect(ReactionTypes.fromServer('sticker', null), 'sticker');
-      expect(ReactionTypes.fromServer(2007, '🫡'), '2007');
+      expect(ReactionTypes.fromServer(2007, '🫡'), 'sticker-reaction');
       expect(ReactionTypes.fromServer(4000, null), '4000');
       expect(ReactionTypes.isReaction('sticker'), isFalse);
       expect(ReactionTypes.isReaction('2007'), isFalse);

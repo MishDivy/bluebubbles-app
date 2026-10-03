@@ -1,4 +1,5 @@
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/attachment_holder.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/inline_sticker_row.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/message_image_gallery.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/interactive/interactive_holder.dart';
 import 'package:bluebubbles/app/state/chat_state_scope.dart';
@@ -55,6 +56,7 @@ class MessagePartContent extends StatelessWidget {
 
     // Messages with attachments
     if (messagePart.attachments.isNotEmpty) {
+      if (messagePart.isInlineSticker) return InlineStickerRow(part: messagePart);
       final iOS = SettingsSvc.settings.skin.value == Skins.iOS;
       if (iOS && messagePart.isMediaGallery) {
         final state = MessageStateScope.of(context);

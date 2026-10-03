@@ -93,10 +93,11 @@ class ReactionTypes {
   static bool isRemoval(String? type) => type?.startsWith('-') == true;
   static bool isClassic(String? type) => toList().contains(baseType(type));
   static bool isCustom(String? type) => isEmoji(baseType(type));
+  static bool isStickerReaction(String? type) => baseType(type) == 'sticker-reaction';
 
   // Unknown associated events are retained by the model, but only actual
   // tapbacks (including an emoji whose payload is missing) belong in the row.
-  static bool isReaction(String? type) => isClassic(type) || isCustom(type) || baseType(type) == 'emoji';
+  static bool isReaction(String? type) => isClassic(type) || isCustom(type) || isStickerReaction(type) || baseType(type) == 'emoji';
 
   /// Normalize both server metadata and already-normalized cached messages.
   static String? fromServer(dynamic type, dynamic emoji) {
@@ -104,10 +105,13 @@ class ReactionTypes {
     String value = type.toString();
     final numeric = int.tryParse(value);
     if (numeric != null) {
+      if (numeric == 1000) value = 'sticker';
       if (numeric >= 2000 && numeric <= 2005) value = toList()[numeric - 2000];
       if (numeric >= 3000 && numeric <= 3005) value = '-${toList()[numeric - 3000]}';
       if (numeric == 2006) value = 'emoji';
       if (numeric == 3006) value = '-emoji';
+      if (numeric == 2007) value = 'sticker-reaction';
+      if (numeric == 3007) value = '-sticker-reaction';
     }
     if (baseType(value) == 'emoji' && emoji is String && isEmoji(emoji)) {
       return '${isRemoval(value) ? '-' : ''}$emoji';

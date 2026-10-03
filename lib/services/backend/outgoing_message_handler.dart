@@ -3,6 +3,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 import 'package:bluebubbles/services/backend/interfaces/send_message_interface.dart';
 import 'package:bluebubbles/services/isolates/global_isolate.dart';
 import 'package:bluebubbles/services/services.dart';
@@ -184,7 +185,8 @@ class OutgoingMessageHandler {
   /// [OutgoingQueueItem.completer] resolves — i.e. when the HTTP response arrives
   /// or an error is surfaced.
   Future<void> queue(OutgoingQueueItem item) async {
-    if (item is OutgoingAttachment && item.isNativeSticker && item.isRetry) {
+    if ((item is OutgoingAttachment && item.isNativeSticker && item.isRetry) ||
+        (item is OutgoingStickerRow && item.isRetry)) {
       throw UnsupportedError('Native sticker sends require checking the previous outcome before sending again.');
     }
     // Every item must have a stable temp GUID before prep/retry begins — see
@@ -224,7 +226,11 @@ class OutgoingMessageHandler {
   /// which crashed [_prepItemWithRetry]'s old null-check assertion.
   void _ensureTempGuid(OutgoingQueueItem item) {
     if (item.message.guid == null) item.message.generateTempGuid();
-    if (item is OutgoingAttachment) item.attachment.guid = item.message.guid;
+    if (item is OutgoingAttachment) {
+      item.attachment.guid = item.message.guid;
+      if (item.isNativeSticker) item.message.metadata = {...?item.message.metadata, 'nativeStickerSend': true};
+    }
+    if (item is OutgoingStickerRow) item.ensureAttachmentGuids();
   }
 
   /// Prep [item] with a bounded retry on transient failure.
@@ -247,7 +253,12 @@ class OutgoingMessageHandler {
   /// `(ok: false, ...)` once a terminal failure has been finalized (the caller
   /// should stop).
   Future<({bool ok, dynamic result})> _prepItemWithRetry(OutgoingQueueItem item) async {
-    final isAttachment = item is OutgoingAttachment;
+    final attachments = switch (item) {
+      OutgoingAttachment item => [item.attachment],
+      OutgoingStickerRow item => item.attachments,
+      _ => <Attachment>[],
+    };
+    final isAttachment = attachments.isNotEmpty;
 
     List<Message>? built;
     if (!isAttachment) {
@@ -262,7 +273,7 @@ class OutgoingMessageHandler {
       attempts = attempt;
       try {
         if (isAttachment) {
-          await prepAttachment(item.chat, item.message, item.attachment);
+          await prepAttachments(item.chat, item.message, attachments);
           return (ok: true, result: null);
         } else {
           return (
@@ -304,6 +315,9 @@ class OutgoingMessageHandler {
         logMessage: 'Failed to prepare outgoing message after $attempts attempt(s)',
         error: lastError,
         stack: lastStack,
+        onExtra: item is OutgoingStickerRow
+            ? (failed) async => _failRowAttachmentProgress(item.chat, failed, item.attachments.map((asset) => asset.guid!).toList())
+            : null,
       );
     }
     item.completer?.completeError(lastError ?? StateError('Outgoing prep failed'));
@@ -372,7 +386,9 @@ class OutgoingMessageHandler {
               final tempGuid = m.guid!;
               m.error = MessageError.BAD_REQUEST.code;
               m.errorMessage = 'Canceled due to previous failure';
-              await _finalizeOutgoingFailure(pending.chat, m, tempGuid);
+              await _finalizeOutgoingFailure(pending.chat, m, tempGuid, onExtra: pending is OutgoingStickerRow
+                  ? (failed) async => _failRowAttachmentProgress(pending.chat, failed, pending.attachments.map((asset) => asset.guid!).toList())
+                  : null);
             }
           }
         });
@@ -406,7 +422,9 @@ class OutgoingMessageHandler {
       final m = pending.message;
       m.error = ClientMessageError.userCanceled.code;
       m.errorMessage = 'Canceled by user';
-      await _finalizeOutgoingFailure(pending.chat, m, m.guid!);
+      await _finalizeOutgoingFailure(pending.chat, m, m.guid!, onExtra: pending is OutgoingStickerRow
+          ? (failed) async => _failRowAttachmentProgress(pending.chat, failed, pending.attachments.map((asset) => asset.guid!).toList())
+          : null);
     }
     if (toCancel.isNotEmpty) {
       pendingChatGuids.assignAll(_queue.map((e) => e.item.chat.guid).toSet());
@@ -518,6 +536,9 @@ class OutgoingMessageHandler {
           typed.isAudioMessage,
           typed.attachment,
         );
+      case QueueType.sendStickerRow:
+        final typed = item as OutgoingStickerRow;
+        return sendStickerRow(typed.chat, typed.message, typed.attachments);
     }
   }
 
@@ -631,8 +652,13 @@ class OutgoingMessageHandler {
       throw StateError('Missing attachment for sendAttachment prep on message ${m.guid}');
     }
 
-    final progress = AttachmentUploadProgress(attachment.guid!, 0.0.obs);
-    attachmentProgress.add(progress);
+    await prepAttachments(c, m, [attachment]);
+  }
+
+  Future<void> _stageAttachment(Message m, Attachment attachment) async {
+    if (!attachmentProgress.any((progress) => progress.guid == attachment.guid)) {
+      attachmentProgress.add(AttachmentUploadProgress(attachment.guid!, 0.0.obs));
+    }
 
     if (!kIsWeb) {
       final sourcePath = attachment.metadata?['source_path'] as String?;
@@ -692,13 +718,19 @@ class OutgoingMessageHandler {
 
       attachment.isDownloaded = true;
     }
+  }
+
+  Future<void> prepAttachments(Chat c, Message m, List<Attachment> attachments) async {
+    for (final attachment in attachments) {
+      await _stageAttachment(m, attachment);
+    }
 
     // ChatInterface.addMessageToChat returns a DB-hydrated Message loaded from
     // the main isolate's Store (Database.messages.get(id)) after the
     // GlobalIsolate transaction commits.  This object has its id set and its
     // dbAttachments ToMany linked to the main Store, so _handleNewMessage can
     // reload attachments from DB without racing against cross-isolate write timing.
-    final savedMessage = (await c.addMessage(m, attachments: [attachment])).message;
+    final savedMessage = (await c.addMessage(m, attachments: attachments)).message;
 
     // The DB write goes through the GlobalIsolate, so the main-isolate OB watch
     // subscription won't fire for it.  Explicitly push the message into the view
@@ -707,7 +739,9 @@ class OutgoingMessageHandler {
       await MessagesSvc(c.guid).addNewMessage(savedMessage);
       // Register upload-in-progress state.  Must come after addNewMessage so the
       // MessageState already exists.
-      MessagesSvc(c.guid).notifyAttachmentUploadStarted(savedMessage, attachment);
+      for (final attachment in attachments) {
+        MessagesSvc(c.guid).notifyAttachmentUploadStarted(savedMessage, attachment);
+      }
     }
     // Update ChatState immediately so the tile reflects the outgoing attachment
     // before the queue dispatches the HTTP call.
@@ -955,6 +989,53 @@ class OutgoingMessageHandler {
   }
 
   // ── Finalization helpers ─────────────────────────────────────────────────
+
+  Future<void> sendStickerRow(Chat c, Message m, List<Attachment> attachments) async {
+    final tempGuid = m.guid!;
+    final tempAttachmentGuids = attachments.map((attachment) => attachment.guid!).toList();
+    List<Attachment>? confirmedAttachments;
+    return _sendWithRace(
+      tempGuid: tempGuid,
+      chat: c,
+      httpCall: () async {
+        final response = await SendMessageInterface.sendStickerRow(
+          chatGuid: c.guid,
+          tempGuid: tempGuid,
+          files: attachments.map((attachment) => PlatformFile(
+            path: attachment.path, name: attachment.transferName!, size: attachment.totalBytes ?? 0,
+          )).toList(),
+          stickerLabels: attachments.map((attachment) => attachment.metadata?['stickerLabel'] as String?).toList(),
+        );
+        confirmedAttachments = StickerHelper.confirmedRowAttachments(response['data'] as Map, attachments.length);
+        return response;
+      },
+      onSuccess: (data) async {
+        final confirmed = Message.fromMap(data['data']);
+        for (var i = 0; i < confirmedAttachments!.length; i++) {
+          final attachment = confirmedAttachments![i];
+          await _matchAttachmentWithExisting(c, tempAttachmentGuids[i], attachment);
+          if (Get.isRegistered<MessagesService>(tag: c.guid)) {
+            MessagesSvc(c.guid).notifyAttachmentSendComplete(tempGuid, confirmed.guid!, tempAttachmentGuids[i], attachment);
+          }
+        }
+        await _matchMessageWithExisting(c, tempGuid, confirmed);
+        attachmentProgress.removeWhere((progress) => tempAttachmentGuids.contains(progress.guid));
+      },
+      onError: (error, stack) => _finalizeOutgoingFailure(c, m, tempGuid,
+        logMessage: 'Failed to confirm native sticker row', error: error, stack: stack,
+        onExtra: (failed) async => _failRowAttachmentProgress(c, failed, tempAttachmentGuids),
+      ),
+    );
+  }
+
+  void _failRowAttachmentProgress(Chat chat, Message failed, List<String> guids) {
+    if (Get.isRegistered<MessagesService>(tag: chat.guid)) {
+      for (final guid in guids) {
+        MessagesSvc(chat.guid).notifyAttachmentTransferError(failed.guid!, guid);
+      }
+    }
+    attachmentProgress.removeWhere((progress) => guids.contains(progress.guid));
+  }
 
   /// Centralises the post-success steps shared by text and multipart send paths:
   ///

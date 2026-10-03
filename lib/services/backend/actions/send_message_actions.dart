@@ -9,6 +9,17 @@ import 'package:bluebubbles/services/services.dart';
 /// hydrate a [Message] via `Message.fromMap(result['data'])`.
 ///
 class SendMessageActions {
+  static Future<Map<String, dynamic>> sendStickerRow(dynamic data) async {
+    final map = data as Map<String, dynamic>;
+    final response = await HttpSvc.message.sendStickerRow(
+      map['chatGuid'] as String, map['tempGuid'] as String,
+      (map['files'] as List).map((file) => PlatformFile(
+          name: file['name'] as String, path: file['path'] as String, size: file['size'] as int)).toList(),
+      stickerLabels: (map['stickerLabels'] as List?)?.cast<String?>(),
+    );
+    return response.data as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>> sendSticker(dynamic data) async {
     final map = data as Map<String, dynamic>;
     final response = await HttpSvc.message.sendSticker(

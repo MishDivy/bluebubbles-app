@@ -1,103 +1,133 @@
 import 'package:bluebubbles/database/models.dart';
-import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/sticker_asset_image.dart';
+import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import 'package:universal_io/io.dart';
+import 'package:get/get.dart';
 
-class StickerHolder extends StatefulWidget {
+class StickerHolder extends StatelessWidget {
   const StickerHolder({super.key, required this.stickerMessages, required this.controller});
   final Iterable<Message> stickerMessages;
   final ConversationViewController controller;
 
   @override
-  State<StickerHolder> createState() => _StickerHolderState();
+  Widget build(BuildContext context) => ConstrainedBox(
+    constraints: BoxConstraints(maxWidth: NavigationSvc.width(context) * 0.6),
+    child: Wrap(
+      spacing: 4,
+      runSpacing: 4,
+      children: [
+        for (final message in stickerMessages)
+          for (final attachment in message.dbAttachments)
+            _StickerPlacementTile(
+              key: ValueKey('${message.guid}:${attachment.guid}'),
+              placementGuid: message.guid,
+              attachment: attachment,
+              chatGuid: controller.chat.guid,
+            ),
+      ],
+    ),
+  );
 }
 
-class _StickerHolderState extends State<StickerHolder> {
-  Iterable<Message> get messages => widget.stickerMessages;
+class _StickerPlacementController extends StatefulController {
+  static int _nextId = 0;
+  late final String tag = 'sticker-placement:${_nextId++}';
+  final String? placementGuid;
+  final String chatGuid;
+  late final String serverIdentity = HttpSvc.origin;
+  final hidden = false.obs;
+  final visible = true.obs;
+  _StickerPlacementController(this.placementGuid, this.chatGuid);
 
-  bool _visible = true;
-  bool _dismissed = false;
-  final Map<String, String> _stickerPaths = {};
+  @override
+  void onInit() {
+    super.onInit();
+    final guid = placementGuid;
+    hidden.value = guid != null && PrefsSvc.messaging.isStickerPlacementHidden(serverIdentity, chatGuid, guid);
+  }
+
+  Future<void> hideLocally() async {
+    final guid = placementGuid;
+    if (guid == null) return;
+    await PrefsSvc.messaging.hideStickerPlacement(serverIdentity, chatGuid, guid);
+    if (!isClosed) hidden.value = true;
+  }
+
+  @override
+  void onClose() {
+    updateWidgetFunctions.clear();
+    super.onClose();
+  }
+}
+
+class _StickerPlacementTile extends CustomStateful<_StickerPlacementController> {
+  final Attachment attachment;
+  _StickerPlacementTile({super.key, required String? placementGuid, required this.attachment, required String chatGuid})
+    : super(parentController: _StickerPlacementController(placementGuid, chatGuid));
+  @override
+  State<_StickerPlacementTile> createState() => _StickerPlacementTileState();
+}
+
+class _StickerPlacementTileState extends CustomState<_StickerPlacementTile, void, _StickerPlacementController> {
+  late final _StickerPlacementController _ownedController = widget.parentController;
+  @override
+  _StickerPlacementController get controller => _ownedController;
 
   @override
   void initState() {
     super.initState();
-    loadStickers();
+    tag = controller.tag;
+    Get.put(controller, tag: controller.tag);
   }
 
-  Future<void> loadStickers() async {
-    for (Message msg in messages) {
-      for (Attachment attachment in msg.dbAttachments) {
-        final pathName = attachment.path;
-        if (_stickerPaths.containsKey(pathName)) continue;
-
-        if (await FileSystemEntity.type(pathName) == FileSystemEntityType.notFound) {
-          AttachmentDownloader.startDownload(
-            attachment,
-            onComplete: (_) async {
-              await _prepareSticker(attachment);
-            },
-          );
-        } else {
-          await _prepareSticker(attachment);
-        }
+  Future<void> showDetails() async {
+    final sticker = widget.attachment.metadata?['sticker'];
+    final metadata = sticker is Map ? sticker : const {};
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final key in ['accessibilityLabel', 'packName', 'sourceBundleId', 'packId'])
+              if (metadata[key] is String && (metadata[key] as String).isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                  child: Text(metadata[key] as String, maxLines: 2, overflow: TextOverflow.ellipsis),
+                ),
+            ListTile(
+              title: const Text('Hide this sticker on this device'),
+              subtitle: const Text('This does not remove the sticker for anyone else.'),
+              onTap: () => Navigator.pop(context, true),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed == true && mounted) {
+      try {
+        await controller.hideLocally();
+      } catch (_) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Could not save sticker visibility.')));
       }
     }
   }
 
-  Future<void> _prepareSticker(Attachment attachment) async {
-    final compatible = await AttachmentsSvc.ensureImageCompatibility(attachment);
-    if (mounted && compatible != null) setState(() => _stickerPaths[attachment.path] = compatible);
-  }
-
   @override
-  Widget build(BuildContext context) {
-    if (_stickerPaths.isEmpty || _dismissed) return const SizedBox.shrink();
-
+  Widget build(BuildContext context) => Obx(() {
+    if (controller.hidden.value) return const SizedBox.shrink();
     return GestureDetector(
-      onTap: () => setState(() => _visible = !_visible),
-      onLongPress: () {
-        HapticFeedback.mediumImpact();
-        setState(() => _dismissed = true);
-      },
+      onTap: () => controller.visible.toggle(),
+      onLongPress: showDetails,
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 150),
-        opacity: _visible ? 1.0 : 0.25,
+        opacity: controller.visible.value ? 1 : 0.25,
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: NavigationSvc.width(context) * 0.6),
-          child: Wrap(
-            spacing: 4,
-            runSpacing: 4,
-            children: _stickerPaths.values
-                .map(
-                  (path) => ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 100, maxHeight: 100),
-                    child: Image(
-                      image: ResizeImage.resizeIfNeeded(
-                        (100 * MediaQuery.devicePixelRatioOf(context)).ceil(),
-                        null,
-                        LoopingFileImage(File(path)),
-                      ),
-                      gaplessPlayback: true,
-                      filterQuality: FilterQuality.none,
-                      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
-                        if (wasSynchronouslyLoaded) return child;
-                        return AnimatedOpacity(
-                          opacity: frame == null ? 0.0 : 1.0,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                          child: child,
-                        );
-                      },
-                    ),
-                  ),
-                )
-                .toList(),
-          ),
+          constraints: const BoxConstraints(maxWidth: 100, maxHeight: 100),
+          child: StickerAssetImage(key: ValueKey(widget.attachment.guid), attachment: widget.attachment),
         ),
       ),
     );
-  }
+  });
 }

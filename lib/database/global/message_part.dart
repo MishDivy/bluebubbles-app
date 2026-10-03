@@ -14,6 +14,7 @@ class MessagePart {
     required this.part,
     this.shouldRedact = false,
     this.attachmentPartIndices,
+    this.isInlineSticker = false,
   }) {
     if (attachments.isEmpty) attachments = [];
     if (mentions.isEmpty) mentions = [];
@@ -49,6 +50,7 @@ class MessagePart {
   bool isUnsent;
   List<MessagePart> edits;
   int part;
+  bool isInlineSticker;
 
   /// For gallery parts created by collapsing consecutive media-only parts,
   /// maps each attachment (by index) to its original messagePart index.
@@ -66,6 +68,7 @@ class MessagePart {
   /// True when this part contains only images or videos with no text or subject.
   /// Used to determine whether adjacent parts can be collapsed into a gallery.
   bool get isMediaOnlyPart =>
+      !isInlineSticker &&
       attachments.isNotEmpty &&
       text == null &&
       subject == null &&
@@ -74,7 +77,7 @@ class MessagePart {
   /// True when this part's attachments form a multi-item media gallery (>1 images/videos).
   /// Used to route the part to [MessageImageGallery] instead of [AttachmentHolder].
   bool get isMediaGallery =>
-      attachments.length > 1 && attachments.every((a) => a.mimeStart == 'image' || a.mimeStart == 'video');
+      !isInlineSticker && attachments.length > 1 && attachments.every((a) => a.mimeStart == 'image' || a.mimeStart == 'video');
 }
 
 class Mention {

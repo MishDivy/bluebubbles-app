@@ -88,4 +88,26 @@ class StickerFolderService {
       }
     }
   }
+
+  Future<void> sendRow(Chat chat, List<StickerFolderEntry> entries) async {
+    if (entries.length < 2 || entries.length > 10) throw ArgumentError('Select 2 to 10 stickers for a row.');
+    final staged = <PlatformFile>[];
+    try {
+      for (final entry in entries) {
+        final data = (await channel.invokeMapMethod<String, dynamic>('stage-sticker', {'uri': entry.uri}))!;
+        staged.add(PlatformFile(path: data['path'] as String, name: data['name'] as String, size: data['size'] as int));
+      }
+      final message = Message(text: '', dateCreated: DateTime.now(), hasAttachments: true, isFromMe: true, handleId: 0);
+      await OutgoingMsgHandler.queue(OutgoingStickerRow(chat: chat, message: message,
+        attachments: staged.map((file) => buildAttachment(file, nativeSticker: false)).toList()));
+    } finally {
+      for (final file in staged) {
+        try {
+          await File(file.path!).delete();
+        } on FileSystemException {
+          // Later selections clean abandoned files from this feature's cache.
+        }
+      }
+    }
+  }
 }

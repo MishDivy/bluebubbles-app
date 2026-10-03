@@ -11,6 +11,7 @@ class ServerDetails {
   final String? proxyService;
   final bool customEmojiReactions;
   final bool stickerSending;
+  final bool stickerRows;
 
   const ServerDetails({
     required this.macOSVersion,
@@ -22,6 +23,7 @@ class ServerDetails {
     this.proxyService,
     this.customEmojiReactions = false,
     this.stickerSending = false,
+    this.stickerRows = false,
   });
 
   const ServerDetails.empty()
@@ -33,11 +35,13 @@ class ServerDetails {
       iCloudAccount = null,
       proxyService = null,
       customEmojiReactions = false,
-      stickerSending = false;
+      stickerSending = false,
+      stickerRows = false;
 
   /// Requires an explicit capability negotiated with the connected helper.
   bool get supportsCustomEmojiReactions => customEmojiReactions;
   bool get supportsStickerSending => stickerSending;
+  bool get supportsStickerRows => stickerRows;
 
   // ---------------------------------------------------------------------------
   // Server feature helpers

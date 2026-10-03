@@ -11,7 +11,9 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 | `video_player.dart` | Video playback with custom controls |
 | `audio_player.dart` | Audio playback with progress bar |
 | `contact_card.dart` | Contact / vCard display |
-| `sticker_holder.dart` | Sticker rendering (full-size emoji-like overlays) |
+| `sticker_holder.dart` | Independent placement artwork, source details and local-only hiding |
+| `inline_sticker_row.dart` | Compact ordered native inline stickers, separate from photo galleries |
+| `sticker_asset_image.dart` | Original sticker artwork loader for placements and sticker tapbacks |
 | `looping_image.dart` | Native file/memory decoding with continuous playback; source bytes stay unchanged |
 | `other_file.dart` | Generic file display for docs, archives, APKs, etc. |
 | `live_photo_mixin.dart` | Mixin for handling Live Photo metadata |
@@ -33,6 +35,11 @@ Renders all non-text media inside message bubbles. Entry point: `AttachmentHolde
 ## Stickers vs Attachments
 
 Stickers (`associatedMessageType == "sticker"`) are **not** routed through `AttachmentHolder`. They are rendered by `StickerObserver` (in `message_holder/`) as overlays positioned above the bubble.
+Inline emoji-image runs use `AttachmentHolder` in compact transparent tiles, ordered by their
+transfer GUID runs even when every run belongs to part 0. Verified row metadata supplies the
+same ordering when attributedBody is absent. Placements do not use tapback actor slots.
+Hiding a placement only changes bounded local preferences scoped by server origin, chat and
+placement GUID. No native removal is sent. Unverified placement geometry is not applied.
 
 Original-file images use `LoopingFileImage` in `ImageViewer`; overlays use it in
 `StickerHolder`. Byte-backed images use `LoopingMemoryImage`. Both providers also

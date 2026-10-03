@@ -65,6 +65,7 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
           m.guid == widget.reaction.guid ||
           (m.associatedMessageType == widget.reaction.associatedMessageType &&
               m.associatedMessagePart == widget.reaction.associatedMessagePart &&
+              m.handleId == widget.reaction.handleId &&
               m.isFromMe == widget.reaction.isFromMe));
       if (found != null) return found;
     }
@@ -180,6 +181,10 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
               },
               child: Center(
                 child: Builder(builder: (context) {
+                  if (ReactionTypes.isStickerReaction(reactionType)) {
+                    return ReactionIcon(type: reactionType, color: context.theme.colorScheme.onSurface,
+                      attachment: reaction.dbAttachments.firstOrNull);
+                  }
                   final text = Text(
                     ReactionTypes.displayEmoji(reactionType),
                     style: const TextStyle(fontSize: 15, fontFamily: 'Apple Color Emoji'),
@@ -241,6 +246,7 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
                             : EdgeInsets.zero,
                         child: ReactionIcon(
                           type: reactionType,
+                          attachment: reaction.dbAttachments.firstOrNull,
                           classicAsSvg: true,
                           color: reactionType == "love"
                               ? Colors.pink
@@ -340,6 +346,10 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
         ),
         child: Center(
           child: Builder(builder: (ctx) {
+            if (ReactionTypes.isStickerReaction(rType)) {
+              return ReactionIcon(type: rType, color: context.theme.colorScheme.onSurface,
+                attachment: reaction.dbAttachments.firstOrNull);
+            }
             final text = Text(
               ReactionTypes.displayEmoji(rType),
               style: const TextStyle(fontSize: 15, fontFamily: 'Apple Color Emoji'),
@@ -411,6 +421,7 @@ class ReactionWidgetState extends State<ReactionWidget> with ThemeHelpers {
                         : EdgeInsets.zero,
                     child: ReactionIcon(
                       type: rType,
+                      attachment: reaction.dbAttachments.firstOrNull,
                       classicAsSvg: true,
                       color: rType == "love"
                           ? Colors.pink
