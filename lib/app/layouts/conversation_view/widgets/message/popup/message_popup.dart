@@ -1,5 +1,7 @@
 import 'dart:math';
 import 'dart:ui';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/actions/sticker_actions.dart' as popup_sticker_actions;
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/actions/media_actions.dart'
     as popup_media_actions;
@@ -48,6 +50,7 @@ class MessagePopup extends StatefulWidget {
   final MessagePopupServerDetails serverDetails;
   final Function([String? type, int? part]) sendTapback;
   final BuildContext? Function() widthContext;
+  final Future<StickerTargetPreview?> Function()? captureStickerPreview;
 
   const MessagePopup({
     super.key,
@@ -60,6 +63,7 @@ class MessagePopup extends StatefulWidget {
     required this.serverDetails,
     required this.sendTapback,
     required this.widthContext,
+    this.captureStickerPreview,
   });
 
   @override
@@ -89,6 +93,19 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
   String? currentlySelectedReaction = "init";
   final GlobalKey _childKey = GlobalKey();
   double? _measuredChildHeight;
+  bool _stickerActionBusy = false;
+
+  Future<void> _runStickerAction(Future<void> Function() action) async {
+    if (_stickerActionBusy) return;
+    _stickerActionBusy = true;
+    try {
+      await action();
+    } catch (_) {
+      if (mounted) showSnackbar('Sticker action unavailable', 'Open the sent message part again.');
+    } finally {
+      _stickerActionBusy = false;
+    }
+  }
 
   ConversationViewController get cvController => widget.cvController;
 
@@ -528,13 +545,25 @@ class _MessagePopupState extends State<MessagePopup> with SingleTickerProviderSt
       showSnack: showSnackbar,
       dmChat: dmChat,
       isEmbeddedMedia: isEmbeddedMedia,
+      captureStickerPreview: widget.captureStickerPreview,
     );
   }
 
   List<DetailsMenuActionWidget> get _allActions {
     final canEdit = (message.dateCreated?.toUtc().isWithin(DateTime.now().toUtc(), minutes: 15) ?? false);
     final canUnsend = (message.dateCreated?.toUtc().isWithin(DateTime.now().toUtc(), minutes: 2) ?? false);
+    final canTargetSticker = !kIsWeb && Platform.isAndroid && chat.isIMessage && isSent &&
+        !part.isUnsent && message.dateDeleted == null && message.associatedMessageGuid == null;
     return [
+      if (canTargetSticker) ...[
+        DetailsMenuActionWidget(action: DetailsMenuAction.PlaceSticker, onTap: () => _runStickerAction(() =>
+          popup_sticker_actions.open(_buildActionContext(DetailsMenuAction.PlaceSticker), NativeStickerOperation.placement))),
+        DetailsMenuActionWidget(action: DetailsMenuAction.StickerTapback, onTap: () => _runStickerAction(() =>
+          popup_sticker_actions.open(_buildActionContext(DetailsMenuAction.StickerTapback), NativeStickerOperation.tapback))),
+        if (popup_sticker_actions.ownedStickerTapback(_buildActionContext(DetailsMenuAction.RemoveStickerTapback)) != null)
+          DetailsMenuActionWidget(action: DetailsMenuAction.RemoveStickerTapback, onTap: () => _runStickerAction(() =>
+            popup_sticker_actions.removeTapback(_buildActionContext(DetailsMenuAction.RemoveStickerTapback)))),
+      ],
       if (SettingsSvc.settings.enablePrivateAPI.value && minBigSur && chat.isIMessage && isSent)
         DetailsMenuActionWidget(
           onTap: () => popup_navigation_actions.reply(_buildActionContext(DetailsMenuAction.Reply)),

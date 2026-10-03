@@ -15,6 +15,7 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 | `actions/text_actions.dart` | Text/link actions (copy text, copy selection, open link) |
 | `actions/navigation_actions.dart` | Navigation actions (reply/thread/DM/forward/new conversation) |
 | `actions/message_actions.dart` | Message lifecycle actions (edit/unsend/delete/bookmark/remind/info/etc.) |
+| `actions/sticker_actions.dart` | Target-aware placement/tapback browser entrypoints and own-current-2007 removal confirmation |
 | `widgets/reaction_details.dart` | Reactions preview widget rendered at top of popup |
 | `widgets/custom_reaction_picker.dart` | Emoji picker and removal control; available only when the server explicitly advertises connected-helper support |
 
@@ -27,6 +28,7 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 - Capability flags: `serverDetails`, `isEmbeddedMedia`
 - Related entities: `dmChat`
 - Action metadata: `action`
+- Optional memory-only selected-part capture: `captureStickerPreview`
 
 ## How It Works
 
@@ -34,6 +36,12 @@ Handles the action sheet / context menu shown when the user long-presses (or rig
 2. `MessagePopup` computes action availability and ordering in `_allActions`.
 3. Each menu action callback builds a `MessagePopupActionContext` and dispatches into `actions/*.dart`.
 4. Action functions own behavior; `message_popup.dart` owns visibility conditions and layout.
+
+Android sticker placement captures the selected part's own repaint boundary, excluding outer
+reaction/sticker overlays. A gallery is not treated as one measured native part. Snapshots stay
+in memory, are capped at four million pixels/four MiB, and are disposed after encoding.
+Target actions retain real part indices and do not modify the compose draft or reply selection.
+Removal requires the latest own type-2007 event GUID; type-1000 placements cannot use that endpoint.
 
 ## Adding a New Popup Action
 

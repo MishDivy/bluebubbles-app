@@ -186,7 +186,7 @@ class OutgoingMessageHandler {
   /// or an error is surfaced.
   Future<void> queue(OutgoingQueueItem item) async {
     if ((item is OutgoingAttachment && item.isNativeSticker && item.isRetry) ||
-        (item is OutgoingStickerRow && item.isRetry)) {
+        (item is OutgoingStickerRow && item.isRetry) || (item is OutgoingTargetedSticker && item.isRetry)) {
       throw UnsupportedError('Native sticker sends require checking the previous outcome before sending again.');
     }
     // Every item must have a stable temp GUID before prep/retry begins — see
@@ -231,6 +231,7 @@ class OutgoingMessageHandler {
       if (item.isNativeSticker) item.message.metadata = {...?item.message.metadata, 'nativeStickerSend': true};
     }
     if (item is OutgoingStickerRow) item.ensureAttachmentGuids();
+    if (item is OutgoingTargetedSticker) item.ensureIntent();
   }
 
   /// Prep [item] with a bounded retry on transient failure.
@@ -256,6 +257,7 @@ class OutgoingMessageHandler {
     final attachments = switch (item) {
       OutgoingAttachment item => [item.attachment],
       OutgoingStickerRow item => item.attachments,
+      OutgoingTargetedSticker item => item.attachment == null ? <Attachment>[] : [item.attachment!],
       _ => <Attachment>[],
     };
     final isAttachment = attachments.isNotEmpty;
@@ -315,9 +317,7 @@ class OutgoingMessageHandler {
         logMessage: 'Failed to prepare outgoing message after $attempts attempt(s)',
         error: lastError,
         stack: lastStack,
-        onExtra: item is OutgoingStickerRow
-            ? (failed) async => _failRowAttachmentProgress(item.chat, failed, item.attachments.map((asset) => asset.guid!).toList())
-            : null,
+        onExtra: _nativePrepFailureHook(item),
       );
     }
     item.completer?.completeError(lastError ?? StateError('Outgoing prep failed'));
@@ -325,6 +325,10 @@ class OutgoingMessageHandler {
   }
 
   OutgoingQueueItem _copyWithMessage(OutgoingQueueItem item, Message message) {
+    if (item is OutgoingTargetedSticker) {
+      return OutgoingTargetedSticker(chat: item.chat, message: message, target: item.target,
+        placement: item.placement, attachment: item.attachment, isRetry: item.isRetry, completer: item.completer);
+    }
     if (item is OutgoingReaction) {
       return OutgoingReaction(
         chat: item.chat,
@@ -367,6 +371,22 @@ class OutgoingMessageHandler {
     throw StateError('Unsupported outgoing item type: ${item.runtimeType}');
   }
 
+  Future<void> Function(Message)? _nativePrepFailureHook(OutgoingQueueItem item) {
+    if (item is! OutgoingStickerRow && item is! OutgoingTargetedSticker) return null;
+    return (failed) async {
+      final guids = switch (item) {
+        OutgoingStickerRow item => item.attachments.map((asset) => asset.guid!).toList(),
+        OutgoingTargetedSticker item => [if (item.attachment?.guid != null) item.attachment!.guid!],
+        _ => <String>[],
+      };
+      _failRowAttachmentProgress(item.chat, failed, guids);
+      if (item is OutgoingTargetedSticker) {
+        maybeFindMessagesSvc(item.chat.guid)?.getMessageStateIfExists(item.target.messageGuid)
+            ?.updateAssociatedMessageInternal(failed, tempGuid: item.message.guid);
+      }
+    };
+  }
+
   Future<void> _processNext() async {
     if (_isProcessing) return;
     _isProcessing = true;
@@ -386,9 +406,7 @@ class OutgoingMessageHandler {
               final tempGuid = m.guid!;
               m.error = MessageError.BAD_REQUEST.code;
               m.errorMessage = 'Canceled due to previous failure';
-              await _finalizeOutgoingFailure(pending.chat, m, tempGuid, onExtra: pending is OutgoingStickerRow
-                  ? (failed) async => _failRowAttachmentProgress(pending.chat, failed, pending.attachments.map((asset) => asset.guid!).toList())
-                  : null);
+              await _finalizeOutgoingFailure(pending.chat, m, tempGuid, onExtra: _nativePrepFailureHook(pending));
             }
           }
         });
@@ -422,9 +440,7 @@ class OutgoingMessageHandler {
       final m = pending.message;
       m.error = ClientMessageError.userCanceled.code;
       m.errorMessage = 'Canceled by user';
-      await _finalizeOutgoingFailure(pending.chat, m, m.guid!, onExtra: pending is OutgoingStickerRow
-          ? (failed) async => _failRowAttachmentProgress(pending.chat, failed, pending.attachments.map((asset) => asset.guid!).toList())
-          : null);
+      await _finalizeOutgoingFailure(pending.chat, m, m.guid!, onExtra: _nativePrepFailureHook(pending));
     }
     if (toCancel.isNotEmpty) {
       pendingChatGuids.assignAll(_queue.map((e) => e.item.chat.guid).toSet());
@@ -539,6 +555,8 @@ class OutgoingMessageHandler {
       case QueueType.sendStickerRow:
         final typed = item as OutgoingStickerRow;
         return sendStickerRow(typed.chat, typed.message, typed.attachments);
+      case QueueType.sendTargetedSticker:
+        return sendTargetedSticker(item as OutgoingTargetedSticker);
     }
   }
 
@@ -1035,6 +1053,78 @@ class OutgoingMessageHandler {
       }
     }
     attachmentProgress.removeWhere((progress) => guids.contains(progress.guid));
+  }
+
+  Future<void> sendTargetedSticker(OutgoingTargetedSticker item) async {
+    final target = item.target;
+    final tempGuid = item.message.guid!;
+    final asset = item.attachment;
+    final tempAssetGuid = asset?.guid;
+    Attachment? confirmedAsset;
+    return _sendWithRace(tempGuid: tempGuid, chat: item.chat,
+      httpCall: () async {
+        if (HttpSvc.origin != target.serverIdentity) throw StateError('The server changed. Choose the target again.');
+        final parent = await Message.findOneAsync(guid: target.messageGuid);
+        if (parent == null || parent.dateDeleted != null || parent.chat.target?.guid != target.chatGuid ||
+            parent.messageSummaryInfo.any((summary) => summary.retractedParts.contains(target.partIndex))) {
+          throw StateError('The selected message part is no longer available.');
+        }
+        if (target.operation == NativeStickerOperation.removeTapback) {
+          await parent.fetchAssociatedMessages();
+          final current = getUniqueReactionMessages(parent.associatedMessages.where((event) =>
+            event.guid?.startsWith('temp') != true && event.guid?.startsWith('error') != true && event.error == 0).toList())
+            .firstWhereOrNull((event) => event.isFromMe == true && (event.associatedMessagePart ?? 0) == target.partIndex);
+          if (current?.guid != target.reactionGuid || !ReactionTypes.isStickerReaction(current?.associatedMessageType)) {
+            throw StateError('Your sticker tapback changed. Open the message actions again.');
+          }
+        }
+        final response = await SendMessageInterface.sendTargetedSticker(target: target, tempGuid: tempGuid,
+          placement: item.placement, file: asset == null ? null : PlatformFile(name: asset.transferName!, path: asset.path,
+            size: asset.totalBytes ?? 0), stickerLabel: asset?.metadata?['stickerLabel'] as String?);
+        final data = response['data'] as Map;
+        final received = Message.fromMap(data.cast<String, dynamic>());
+        if (received.guid == null || received.guid!.startsWith('temp') || received.guid!.startsWith('error') ||
+            received.isFromMe != true || received.associatedMessageGuid != target.messageGuid ||
+            received.associatedMessagePart != target.partIndex || received.associatedMessageType != item.reaction ||
+            (target.operation == NativeStickerOperation.removeTapback && received.guid == target.reactionGuid)) {
+          throw StateError('Sticker operation confirmation does not match its target. Check Messages before trying again.');
+        }
+        if (asset != null) {
+          final attachments = data['attachments'];
+          if (attachments is! List || attachments.length != 1 || attachments.single is! Map) {
+            throw StateError('Sticker operation confirmation has incomplete artwork.');
+          }
+          confirmedAsset = Attachment.fromMap((attachments.single as Map).cast<String, dynamic>());
+          if (confirmedAsset!.guid == null || confirmedAsset!.guid!.startsWith('temp') || confirmedAsset!.guid!.startsWith('error')) {
+            throw StateError('Sticker artwork confirmation has no native transfer GUID.');
+          }
+        }
+        return response;
+      },
+      onSuccess: (data) async {
+        final confirmed = Message.fromMap((data['data'] as Map).cast<String, dynamic>());
+        if (confirmedAsset != null) {
+          await _matchAttachmentWithExisting(item.chat, tempAssetGuid!, confirmedAsset!);
+          maybeFindMessagesSvc(item.chat.guid)?.notifyAttachmentSendComplete(tempGuid, confirmed.guid!, tempAssetGuid, confirmedAsset!);
+        }
+        await _matchMessageWithExisting(item.chat, tempGuid, confirmed);
+        maybeFindMessagesSvc(item.chat.guid)?.getMessageStateIfExists(target.messageGuid)
+          ?.updateAssociatedMessageInternal(confirmed, tempGuid: tempGuid);
+        if (tempAssetGuid != null) attachmentProgress.removeWhere((progress) => progress.guid == tempAssetGuid);
+      },
+      onError: (error, stack) => _finalizeOutgoingFailure(item.chat, item.message, tempGuid,
+        logMessage: 'Could not confirm targeted sticker operation', error: error, stack: stack,
+        onExtra: (failed) async {
+          if (tempAssetGuid != null) {
+            _failRowAttachmentProgress(item.chat, failed, [tempAssetGuid]);
+          }
+          maybeFindMessagesSvc(item.chat.guid)?.getMessageStateIfExists(target.messageGuid)
+            ?.updateAssociatedMessageInternal(failed, tempGuid: tempGuid);
+          if (LifecycleSvc.isAlive) {
+            showSnackbar('Sticker action not confirmed', 'Check Messages on your Mac before trying this action again.');
+          }
+        }),
+    );
   }
 
   /// Centralises the post-success steps shared by text and multipart send paths:

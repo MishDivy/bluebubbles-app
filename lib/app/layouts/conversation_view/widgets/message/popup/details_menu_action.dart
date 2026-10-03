@@ -36,6 +36,9 @@ enum DetailsMenuAction {
   MessageInfo,
   CancelSend,
   RefreshPreview,
+  PlaceSticker,
+  StickerTapback,
+  RemoveStickerTapback,
 }
 
 class PlatformSupport {
@@ -74,6 +77,9 @@ const Map<DetailsMenuAction, PlatformSupport> _actionPlatformSupport = {
   DetailsMenuAction.MessageInfo: PlatformSupport(true, true, true, true),
   DetailsMenuAction.CancelSend: PlatformSupport(true, true, true, true),
   DetailsMenuAction.RefreshPreview: PlatformSupport(true, true, true, true),
+  DetailsMenuAction.PlaceSticker: PlatformSupport(true, false, false, false),
+  DetailsMenuAction.StickerTapback: PlatformSupport(true, false, false, false),
+  DetailsMenuAction.RemoveStickerTapback: PlatformSupport(true, false, false, false),
 };
 
 const Map<DetailsMenuAction, (IconData, IconData)> _actionToIcon = {
@@ -103,6 +109,9 @@ const Map<DetailsMenuAction, (IconData, IconData)> _actionToIcon = {
   DetailsMenuAction.MessageInfo: (CupertinoIcons.info, Icons.info),
   DetailsMenuAction.CancelSend: (CupertinoIcons.xmark_circle, Icons.cancel_outlined),
   DetailsMenuAction.RefreshPreview: (CupertinoIcons.arrow_clockwise, Icons.refresh),
+  DetailsMenuAction.PlaceSticker: (CupertinoIcons.photo, Icons.add_photo_alternate_outlined),
+  DetailsMenuAction.StickerTapback: (CupertinoIcons.plus_bubble, Icons.add_reaction_outlined),
+  DetailsMenuAction.RemoveStickerTapback: (CupertinoIcons.minus_circle, Icons.remove_circle_outline),
 };
 
 const Map<DetailsMenuAction, String> _actionToText = {
@@ -132,6 +141,9 @@ const Map<DetailsMenuAction, String> _actionToText = {
   DetailsMenuAction.MessageInfo: "Message Info",
   DetailsMenuAction.CancelSend: "Cancel Send",
   DetailsMenuAction.RefreshPreview: "Refresh Preview",
+  DetailsMenuAction.PlaceSticker: 'Place sticker',
+  DetailsMenuAction.StickerTapback: 'Sticker tapback',
+  DetailsMenuAction.RemoveStickerTapback: 'Remove sticker tapback',
 };
 
 class _DetailsMenuActionUtils {

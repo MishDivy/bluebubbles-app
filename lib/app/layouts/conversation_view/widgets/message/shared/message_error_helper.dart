@@ -86,6 +86,10 @@ Future<void> retryReaction({
   required Chat chat,
   required Message selected,
 }) async {
+  if (reaction.metadata?['nativeStickerTargetSend'] == true) {
+    showSnackbar('Check before resending sticker', 'Check Messages on your Mac, then choose the sticker action again.');
+    return;
+  }
   // Remove the original message and notification
   await MessagesSvc(chat.guid).deleteMessage(reaction);
   await NotificationsSvc.clearFailedToSend(chat.id!);

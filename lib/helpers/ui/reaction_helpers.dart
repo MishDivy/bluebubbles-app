@@ -1,5 +1,6 @@
 import 'package:bluebubbles/database/models.dart' hide Entity;
 import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 
 export 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
 
@@ -23,6 +24,7 @@ List<Message> getUniqueReactionMessages(List<Message> messages) {
     });
   final actors = <String>{};
   return sorted.where((msg) {
+    if (StickerHelper.isUnconfirmedTargetedEvent(msg)) return false;
     if (msg.guid != null && !seenGuids.add(msg.guid!)) return false;
     final handle = msg.handleId != null && msg.handleId != 0 ? msg.handleId : msg.handleRelation.targetId;
     final actor = msg.isFromMe == true

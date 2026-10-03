@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/backend/filesystem/sticker_folder_service.dart';
 import 'package:bluebubbles/services/services.dart';
@@ -11,6 +12,12 @@ class StickerBrowserController extends StatefulController {
   late final String tag = '${chat.guid}:sticker-browser:${_nextId++}';
   final Chat chat;
   final StickerFolderService folders;
+  final NativeStickerTarget? target;
+  final StickerTargetPreview? targetPreview;
+  final bool Function()? isTargetCurrent;
+  final placement = Rxn<StickerPlacement>();
+  final operationSupported = false.obs;
+  final submitted = false.obs;
   final entries = <StickerFolderEntry>[].obs;
   final parents = <StickerFolderEntry>[].obs;
   final root = RxnString();
@@ -24,13 +31,31 @@ class StickerBrowserController extends StatefulController {
   final loading = false.obs;
   final supported = false.obs;
   final rowSupported = false.obs;
-  bool get canSendNative => selection.length > 1 ? rowSupported.value : supported.value;
+  bool get canSendNative => target != null
+      ? operationSupported.value &&
+            targetCurrent &&
+            !submitted.value &&
+            (target!.operation != NativeStickerOperation.placement ||
+                (targetPreview != null && placement.value != null))
+      : selection.length > 1
+      ? rowSupported.value
+      : supported.value;
+  bool get targetCurrent =>
+      target == null || (HttpSvc.origin == target!.serverIdentity && (isTargetCurrent?.call() ?? true));
   final hasMore = false.obs;
   int _offset = 0;
   int _generation = 0;
   bool _disposed = false;
 
-  StickerBrowserController(this.chat, this.folders);
+  StickerBrowserController(this.chat, this.folders, {this.target, this.targetPreview, this.isTargetCurrent}) {
+    if (target != null &&
+        (target!.chatGuid != chat.guid || target!.operation == NativeStickerOperation.removeTapback)) {
+      throw ArgumentError('Choose an upload action for this conversation.');
+    }
+    if (target?.operation == NativeStickerOperation.placement && targetPreview != null) {
+      placement.value = StickerPlacement(x: 0.5, y: 0.5, scale: 1, rotation: 0, parentWidth: targetPreview!.size.width);
+    }
+  }
   bool get active => !_disposed;
 
   Future<void> initialize() async {
@@ -52,21 +77,31 @@ class StickerBrowserController extends StatefulController {
     if (!chat.isIMessage) {
       supported.value = false;
       rowSupported.value = false;
+      operationSupported.value = false;
       capabilityReason.value = 'Native stickers require an iMessage conversation.';
       return;
     }
     try {
+      if (!targetCurrent) throw StateError('The selected message or server changed. Open the message actions again.');
       final capabilities = await HttpSvc.message.stickerCapabilities();
       final value = capabilities['stickerSending'] == true;
       if (!active) return;
       supported.value = value;
       rowSupported.value = capabilities['stickerRows'] == true;
-      capabilityReason.value = value ? null : 'The connected server helper has not enabled native sticker sending.';
+      operationSupported.value = target != null && capabilities[target!.capability] == true;
+      capabilityReason.value = target == null
+          ? value
+                ? null
+                : 'The connected server helper has not enabled native sticker sending.'
+          : operationSupported.value
+          ? null
+          : 'The connected helper has not enabled this sticker action.';
     } catch (_) {
       if (!active) return;
       supported.value = false;
       capabilityReason.value = 'Could not check native sticker support. Reconnect and refresh.';
       rowSupported.value = false;
+      operationSupported.value = false;
     }
   }
 
@@ -117,11 +152,18 @@ class StickerBrowserController extends StatefulController {
   }
 
   void select(StickerFolderEntry entry) {
+    if (submitted.value) return;
     if (entry.directory) {
       parents.add(entry);
       folder.value = entry.uri;
       unawaited(load(reset: true));
     } else {
+      if (target != null) {
+        selection.assignAll([entry]);
+        selected.value = entry;
+        nativeSticker.value = true;
+        return;
+      }
       final index = selection.indexWhere((item) => item.uri == entry.uri);
       if (index >= 0) {
         selection.removeAt(index);
@@ -143,17 +185,29 @@ class StickerBrowserController extends StatefulController {
 
   Future<void> send() async {
     final entry = selected.value;
-    if (entry == null || busy.value || (nativeSticker.value && !canSendNative)) return;
+    if (!active || entry == null || busy.value || (nativeSticker.value && !canSendNative)) return;
     busy.value = true;
     try {
-      if (selection.length > 1) {
+      if (target != null) {
+        if (!targetCurrent) throw StateError('The selected message or server changed.');
+        await folders.sendTargeted(
+          chat,
+          entry,
+          target!,
+          placement: placement.value,
+          canQueue: () => active && targetCurrent,
+        );
+        if (active) submitted.value = true;
+      } else if (selection.length > 1) {
         await folders.sendRow(chat, List.of(selection));
       } else {
         await folders.send(chat, entry, nativeSticker: nativeSticker.value);
       }
       if (active) {
-        selected.value = null;
-        selection.clear();
+        if (target == null) {
+          selected.value = null;
+          selection.clear();
+        }
       }
     } on PlatformException catch (e) {
       if (active) error.value = e.message;

@@ -2,6 +2,40 @@ import 'package:bluebubbles/database/models.dart';
 import 'package:collection/collection.dart';
 
 class StickerHelper {
+  static bool isUnconfirmedTargetedEvent(Message message) => message.metadata?['nativeStickerTargetSend'] == true &&
+      (message.guid?.startsWith('temp') == true || message.guid?.startsWith('error') == true || message.error != 0);
+
+  static bool shouldVerifyTargetedEcho(Message existing, {String? tempGuid, required bool hasAttachments}) =>
+      existing.metadata?['nativeStickerTargetSend'] == true &&
+      (existing.guid?.startsWith('temp') == true || tempGuid != null || hasAttachments);
+
+  /// Check the target before a socket echo can release the one-shot attempt.
+  static Map<String, String> targetedReplacementGuids(Message existing, Message replacement,
+      List<Attachment> attachments) {
+    final raw = existing.metadata?['nativeStickerTarget'];
+    if (raw is! Map) throw StateError('Missing native sticker target.');
+    final target = NativeStickerTarget.fromMap(raw);
+    final expectedType = switch (target.operation) {
+      NativeStickerOperation.placement => 'sticker',
+      NativeStickerOperation.tapback => 'sticker-reaction',
+      NativeStickerOperation.removeTapback => '-sticker-reaction',
+    };
+    if (replacement.guid == null || replacement.guid!.startsWith('temp') || replacement.guid!.startsWith('error') ||
+        replacement.isFromMe != true || replacement.associatedMessageGuid != target.messageGuid || replacement.associatedMessagePart != target.partIndex ||
+        replacement.associatedMessageType != expectedType ||
+        (target.operation == NativeStickerOperation.removeTapback && replacement.guid == target.reactionGuid)) {
+      throw StateError('Sticker confirmation does not match its target.');
+    }
+    // A removal may retain a link to the previous artwork, but adds no asset.
+    if (target.operation == NativeStickerOperation.removeTapback) return {};
+    final local = existing.dbAttachments.toList();
+    if (local.length != 1 || local.single.guid == null || attachments.length != 1 || attachments.single.guid == null ||
+        attachments.single.guid!.startsWith('temp') || attachments.single.guid!.startsWith('error')) {
+      throw StateError('Sticker confirmation must contain one native asset.');
+    }
+    return {attachments.single.guid!: local.single.guid!};
+  }
+
   static List<MessagePart> attributedParts(AttributedBody body, List<Attachment> attachments, {String? subject}) {
     final parts = <MessagePart>[];
     final runs =

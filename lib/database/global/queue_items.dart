@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:bluebubbles/database/models.dart';
 
-enum QueueType { sendMessage, sendReaction, sendAttachment, sendMultipart, sendStickerRow }
+enum QueueType { sendMessage, sendReaction, sendAttachment, sendMultipart, sendStickerRow, sendTargetedSticker }
 
 abstract class QueueItem {
   QueueType type;
@@ -132,6 +132,46 @@ class OutgoingStickerRow extends OutgoingQueueItem {
     final guids = attachments.map((attachment) => attachment.guid).toSet();
     if (guids.length != attachments.length || guids.contains(tempGuid)) {
       throw StateError('Sticker row attachments require distinct GUIDs separate from the message GUID.');
+    }
+  }
+}
+
+class OutgoingTargetedSticker extends OutgoingQueueItem {
+  final NativeStickerTarget target;
+  final StickerPlacement? placement;
+  final Attachment? attachment;
+  @override
+  final bool isRetry;
+  @override
+  String get reaction => switch (target.operation) {
+    NativeStickerOperation.placement => 'sticker',
+    NativeStickerOperation.tapback => 'sticker-reaction',
+    NativeStickerOperation.removeTapback => '-sticker-reaction',
+  };
+
+  OutgoingTargetedSticker({required super.chat, required super.message, required this.target,
+    this.placement, this.attachment, this.isRetry = false, super.completer}) : super(type: QueueType.sendTargetedSticker) {
+    if (chat.guid != target.chatGuid || !chat.isIMessage) throw ArgumentError('The sticker target must belong to this iMessage chat.');
+    if ((target.operation == NativeStickerOperation.removeTapback) != (attachment == null) ||
+        (target.operation == NativeStickerOperation.placement) != (placement != null)) {
+      throw ArgumentError('The sticker operation requires the corresponding asset and placement.');
+    }
+  }
+
+  void ensureIntent() {
+    final tempGuid = message.guid;
+    if (tempGuid == null) throw StateError('A targeted sticker requires a stable attempt GUID.');
+    message.associatedMessageGuid = target.messageGuid;
+    message.associatedMessagePart = target.partIndex;
+    message.associatedMessageType = reaction;
+    message.hasAttachments = attachment != null;
+    message.metadata = {...?message.metadata, 'nativeStickerTargetSend': true, 'nativeStickerTarget': target.toMap(),
+      if (placement != null) 'nativeStickerPlacement': placement!.toMap()};
+    final asset = attachment;
+    if (asset != null) {
+      asset.guid = '$tempGuid-sticker';
+      asset.metadata = {...?asset.metadata, 'nativeStickerTargetSend': true, 'preserveOriginalBytes': true, 'isSticker': true,
+        'nativeStickerTarget': target.toMap()};
     }
   }
 }

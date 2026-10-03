@@ -39,6 +39,8 @@ class ServerInterface {
       customEmojiReactions: response['customEmojiReactions'] == true,
       stickerSending: response['stickerSending'] == true,
       stickerRows: response['stickerRows'] == true,
+      stickerPlacement: response['stickerPlacement'] == true,
+      stickerReactions: response['stickerReactions'] == true,
     );
   }
 }

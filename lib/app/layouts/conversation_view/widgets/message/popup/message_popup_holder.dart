@@ -1,7 +1,9 @@
 import 'dart:math';
+import 'dart:ui' as ui;
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/attachment_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/popup/message_popup.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
 import 'package:bluebubbles/app/state/chat_state_scope.dart';
 import 'package:bluebubbles/app/state/message_state.dart';
 import 'package:bluebubbles/app/state/message_state_scope.dart';
@@ -11,6 +13,7 @@ import 'package:bluebubbles/services/services.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:universal_html/html.dart' as html;
@@ -42,6 +45,30 @@ class MessagePopupHolder extends StatefulWidget {
 
 class _MessagePopupHolderState extends State<MessagePopupHolder> with ThemeHelpers {
   final GlobalKey globalKey = GlobalKey();
+  final GlobalKey _stickerPreviewKey = GlobalKey();
+
+  Future<StickerTargetPreview?> _captureStickerPreview() async {
+    // The gallery boundary contains several cards, not the selected native part.
+    if (!mounted || widget.galleryCurrentIndex != null) return null;
+    final boundary = _stickerPreviewKey.currentContext?.findRenderObject();
+    if (boundary is! RenderRepaintBoundary || boundary.debugNeedsPaint) return null;
+    final size = boundary.size;
+    if (!size.width.isFinite || !size.height.isFinite || size.width < 1 || size.height < 1 ||
+        size.width > 4096 || size.height > 4096) {
+      return null;
+    }
+    ui.Image? image;
+    try {
+      image = await boundary.toImage(pixelRatio: min(1.0, sqrt(4000000 / (size.width * size.height))));
+      final data = await image.toByteData(format: ui.ImageByteFormat.png);
+      if (!mounted || data == null || data.lengthInBytes > 4 * 1024 * 1024) return null;
+      return StickerTargetPreview(data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes), size);
+    } catch (_) {
+      return null;
+    } finally {
+      image?.dispose();
+    }
+  }
 
   Message get message => widget.controller.message;
 
@@ -150,6 +177,7 @@ class _MessagePopupHolderState extends State<MessagePopupHolder> with ThemeHelpe
                         minSierra: minSierra, minBigSur: minBigSur, supportsOriginalDownload: version > 100),
                     sendTapback: sendTapback,
                     widthContext: () => mounted ? context : null,
+                    captureStickerPreview: _captureStickerPreview,
                     child: effectiveChild,
                   ),
                 ),
@@ -246,7 +274,9 @@ class _MessagePopupHolderState extends State<MessagePopupHolder> with ThemeHelpe
                 }
                 openPopup();
               },
-        child: widget.child,
+        child: !kIsWeb && defaultTargetPlatform == TargetPlatform.android
+            ? RepaintBoundary(key: _stickerPreviewKey, child: widget.child)
+            : widget.child,
       );
     });
   }

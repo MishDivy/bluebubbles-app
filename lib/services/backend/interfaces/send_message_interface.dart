@@ -1,5 +1,6 @@
 import 'package:bluebubbles/env.dart';
 import 'package:bluebubbles/database/global/platform_file.dart';
+import 'package:bluebubbles/database/global/sticker_target.dart';
 import 'package:bluebubbles/services/backend/actions/send_message_actions.dart';
 import 'package:bluebubbles/services/isolates/global_isolate.dart';
 import 'package:get_it/get_it.dart';
@@ -10,6 +11,14 @@ import 'package:get_it/get_it.dart';
 /// in-flight sends survive the app being backgrounded.  When already running
 /// inside the isolate, calls the action directly.
 class SendMessageInterface {
+  static Future<Map<String, dynamic>> sendTargetedSticker({required NativeStickerTarget target,
+    required String tempGuid, PlatformFile? file, StickerPlacement? placement, String? stickerLabel}) async {
+    final data = {'target': target.toMap(), 'tempGuid': tempGuid, 'placement': placement?.toMap(),
+      'file': file == null ? null : {'path': file.path, 'name': file.name, 'size': file.size}, 'stickerLabel': stickerLabel};
+    if (isIsolate) return SendMessageActions.sendTargetedSticker(data);
+    return GetIt.I<GlobalIsolate>().send<Map<String, dynamic>>(IsolateRequestType.sendTargetedSticker, input: data);
+  }
+
   static Future<Map<String, dynamic>> sendStickerRow({
     required String chatGuid,
     required String tempGuid,

@@ -4,6 +4,7 @@ import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/ui/chat/conversation_view_controller.dart';
 import 'package:bluebubbles/services/ui/message/messages_service.dart';
 import 'package:flutter/widgets.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
 
 class MessagePopupServerDetails {
   final bool minSierra;
@@ -32,6 +33,7 @@ class MessagePopupActionContext {
   final void Function(String title, String body) showSnack;
   final Chat? dmChat;
   final bool isEmbeddedMedia;
+  final Future<StickerTargetPreview?> Function()? captureStickerPreview;
 
   const MessagePopupActionContext({
     required this.context,
@@ -48,5 +50,6 @@ class MessagePopupActionContext {
     required this.showSnack,
     required this.dmChat,
     required this.isEmbeddedMedia,
+    this.captureStickerPreview,
   });
 }

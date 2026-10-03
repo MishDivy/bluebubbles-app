@@ -110,4 +110,22 @@ class StickerFolderService {
       }
     }
   }
+
+  Future<void> sendTargeted(Chat chat, StickerFolderEntry entry, NativeStickerTarget target,
+      {StickerPlacement? placement, bool Function()? canQueue}) async {
+    final data = (await channel.invokeMapMethod<String, dynamic>('stage-sticker', {'uri': entry.uri}))!;
+    final file = PlatformFile(path: data['path'] as String, name: data['name'] as String, size: data['size'] as int);
+    try {
+      if (canQueue?.call() == false) throw StateError('The sticker target is no longer available.');
+      await OutgoingMsgHandler.queue(OutgoingTargetedSticker(chat: chat,
+        message: Message(text: '', dateCreated: DateTime.now(), isFromMe: true, handleId: 0), target: target,
+        placement: placement, attachment: buildAttachment(file, nativeSticker: false)));
+    } finally {
+      try {
+        await File(file.path!).delete();
+      } on FileSystemException {
+        // Later selections clean abandoned files from this feature's cache.
+      }
+    }
+  }
 }

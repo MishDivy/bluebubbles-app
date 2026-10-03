@@ -1119,8 +1119,10 @@ class MessagesService extends GetxController {
   /// Generates new temp GUID, clears error state, and updates both DB and MessageState
   Future<void> retryFailedMessage(Message message, {String? oldGuid}) async {
     if (message.metadata?['nativeStickerSend'] == true || message.metadata?['nativeStickerRowSend'] == true ||
+        message.metadata?['nativeStickerTargetSend'] == true ||
         message.dbAttachments.any((a) =>
-        a.metadata?['nativeStickerSend'] == true || a.metadata?['nativeStickerRowSend'] == true)) {
+        a.metadata?['nativeStickerSend'] == true || a.metadata?['nativeStickerRowSend'] == true ||
+        a.metadata?['nativeStickerTargetSend'] == true)) {
       showSnackbar('Check before resending sticker',
           'If the attempt timed out, check Messages on your Mac. To send again, select the sticker from its folder.');
       return;

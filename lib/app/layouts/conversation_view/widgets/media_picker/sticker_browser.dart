@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_browser_controller.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_grid.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_selection.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
 import 'package:bluebubbles/app/wrappers/bb_app_bar.dart';
 import 'package:bluebubbles/app/wrappers/bb_scaffold.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
@@ -11,8 +12,22 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class StickerBrowser extends CustomStateful<StickerBrowserController> {
-  StickerBrowser({super.key, required Chat chat, StickerFolderService folders = const StickerFolderService()})
-    : super(parentController: StickerBrowserController(chat, folders));
+  StickerBrowser({
+    super.key,
+    required Chat chat,
+    StickerFolderService folders = const StickerFolderService(),
+    NativeStickerTarget? target,
+    StickerTargetPreview? targetPreview,
+    bool Function()? isTargetCurrent,
+  }) : super(
+         parentController: StickerBrowserController(
+           chat,
+           folders,
+           target: target,
+           targetPreview: targetPreview,
+           isTargetCurrent: isTargetCurrent,
+         ),
+       );
 
   @override
   State<StickerBrowser> createState() => _StickerBrowserState();
@@ -31,7 +46,11 @@ class _StickerBrowserState extends CustomState<StickerBrowser, void, StickerBrow
   Widget build(BuildContext context) => BBScaffold(
     extendBodyBehindAppBar: false,
     appBar: BBAppBar(
-      titleText: 'Stickers',
+      titleText: controller.target?.operation == NativeStickerOperation.placement
+          ? 'Place sticker'
+          : controller.target != null
+          ? 'Sticker tapback'
+          : 'Stickers',
       automaticallyImplyLeading: true,
       actions: [
         Obx(
@@ -57,6 +76,11 @@ class _StickerBrowserState extends CustomState<StickerBrowser, void, StickerBrow
     ),
     body: Column(
       children: [
+        if (controller.target != null)
+          const Padding(
+            padding: EdgeInsets.all(12),
+            child: Text('This sticker targets the selected message part. Your draft and reply stay unchanged.'),
+          ),
         Obx(
           () => controller.folder.value != null
               ? const SizedBox.shrink()

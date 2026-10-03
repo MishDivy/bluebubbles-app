@@ -17,6 +17,7 @@ Plain Dart classes — no ObjectBox annotations. Safe to use on web. All have `f
 | `payload_data.dart` | URL preview + iMessage app data wrapper |
 | `server_payload.dart` | Server event envelope (wraps action payloads from socket) |
 | `queue_items.dart` | Typed outgoing queue models, including `OutgoingStickerRow` for one message with 2–10 distinct attachments |
+| `sticker_target.dart` | Immutable operation/target snapshots and finite bounded placement geometry, separate from reply and ordinary attachment intent |
 | `scheduled_message.dart` | Scheduled send DTO — `Payload` + `Schedule` nested objects |
 
 ## Contact & Location

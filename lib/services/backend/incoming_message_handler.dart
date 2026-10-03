@@ -473,19 +473,34 @@ class IncomingMessageHandler {
       return;
     }
 
-    Map<String, String>? rowGuids;
+    Map<String, String>? attachmentGuids;
+    final nativeTarget = existing.metadata?['nativeStickerTargetSend'] == true;
+    final pendingTarget = existing.guid?.startsWith('temp') == true && nativeTarget;
+    if (StickerHelper.shouldVerifyTargetedEcho(existing, tempGuid: tempGuid, hasAttachments: payload.attachments.isNotEmpty)) {
+      try {
+        if ((existing.metadata?['nativeStickerTarget'] as Map?)?['chatGuid'] != payload.chat.guid) {
+          throw StateError('Sticker confirmation is in a different chat.');
+        }
+        attachmentGuids = StickerHelper.targetedReplacementGuids(existing, m, payload.attachments);
+        if (m.associatedMessageType == '-sticker-reaction') replacementAttachments.clear();
+      } catch (_) {
+        Logger.warn('Ignoring mismatched native sticker target echo; awaiting verified confirmation', tag: _tag);
+        return;
+      }
+    }
     final existingRow = StickerHelper.rowAttachments(existing.dbAttachments.toList());
     final nativeRow = existing.metadata?['nativeStickerRowSend'] == true || (existingRow?.length ?? 0) > 1;
     final pendingRow = existing.guid?.startsWith('temp') == true && nativeRow;
     if (nativeRow && (pendingRow || payload.attachments.isNotEmpty)) {
       try {
-        rowGuids = StickerHelper.rowReplacementGuids(existing.dbAttachments.toList(), payload.attachments);
+        attachmentGuids = StickerHelper.rowReplacementGuids(existing.dbAttachments.toList(), payload.attachments);
       } on StateError {
         Logger.warn('Ignoring incomplete sticker row echo; awaiting verified confirmation', tag: _tag);
         return;
       }
     }
-    if (!pendingRow && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
+    final pendingNative = pendingRow || pendingTarget;
+    if (!pendingNative && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
       OutgoingMsgHandler.completeSendProgressIfExists(tempGuid, Origin.incomingMessageHandler);
     }
 
@@ -501,8 +516,8 @@ class IncomingMessageHandler {
     await _replaceMessage(c, existingGuid, existing, m);
 
     // 6. Persist attachment GUID swaps (e.g. temp attachment → real GUID).
-    await _replaceAttachments(c, existingGuid, existing, m, replacementAttachments, rowGuids: rowGuids);
-    if (pendingRow && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
+    await _replaceAttachments(c, existingGuid, existing, m, replacementAttachments, attachmentGuids: attachmentGuids);
+    if (pendingNative && tempGuid != null && GetIt.I.isRegistered<OutgoingMessageHandler>()) {
       OutgoingMsgHandler.completeSendProgressIfExists(tempGuid, Origin.incomingMessageHandler);
     }
 
@@ -623,7 +638,7 @@ class IncomingMessageHandler {
     Message existing,
     Message replacement,
     List<Attachment?> replacementAttachments,
-    {Map<String, String>? rowGuids}
+    {Map<String, String>? attachmentGuids}
   ) async {
     for (int i = 0; i < replacementAttachments.length; i++) {
       final newAttachment = replacementAttachments[i];
@@ -631,8 +646,8 @@ class IncomingMessageHandler {
 
       // Resolve which local GUID currently owns this attachment slot.
       final String attachmentExistingGuid;
-      if (rowGuids != null) {
-        attachmentExistingGuid = rowGuids[newAttachment.guid]!;
+      if (attachmentGuids != null) {
+        attachmentExistingGuid = attachmentGuids[newAttachment.guid]!;
       } else if (existingGuid.startsWith('temp-')) {
         attachmentExistingGuid = existingGuid;
       } else if (existing.dbAttachments.isNotEmpty && i < existing.dbAttachments.length) {

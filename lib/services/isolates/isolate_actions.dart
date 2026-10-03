@@ -126,6 +126,7 @@ class IsolateActons {
     IsolateRequestType.sendAttachmentMessage: SendMessageActions.sendAttachmentMessage,
     IsolateRequestType.sendSticker: SendMessageActions.sendSticker,
     IsolateRequestType.sendStickerRow: SendMessageActions.sendStickerRow,
+    IsolateRequestType.sendTargetedSticker: SendMessageActions.sendTargetedSticker,
 
     // CustomGroup
     IsolateRequestType.getAllCustomGroups: CustomGroupActions.getAllIds,

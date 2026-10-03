@@ -242,6 +242,37 @@ class MessageApi {
   Future<bool> supportsStickerSending({CancelToken? cancelToken}) async =>
       (await stickerCapabilities(cancelToken: cancelToken))['stickerSending'] == true;
 
+  Future<Response> sendTargetedSticker(NativeStickerTarget target, String tempGuid,
+      {PlatformFile? file, StickerPlacement? placement, String? stickerLabel, CancelToken? cancelToken}) async {
+    if (_svc.origin != target.serverIdentity) throw StateError('The server changed. Choose the target message again.');
+    final removal = target.operation == NativeStickerOperation.removeTapback;
+    if (removal != (file == null) || (target.operation == NativeStickerOperation.placement) != (placement != null)) {
+      throw ArgumentError('The sticker operation has inconsistent asset or placement data.');
+    }
+    return _svc.runApiGuarded(() async {
+      final capabilities = await stickerCapabilities(cancelToken: cancelToken);
+      if (capabilities[target.capability] != true) {
+        throw UnsupportedError('The connected helper has not enabled this sticker operation.');
+      }
+      if (_svc.origin != target.serverIdentity) throw StateError('The server changed. Choose the target message again.');
+      final fields = <String, dynamic>{'chatGuid': target.chatGuid, 'tempGuid': tempGuid,
+        'selectedMessageGuid': target.messageGuid, 'partIndex': removal ? target.partIndex : target.partIndex.toString(),
+        if (removal) 'reactionGuid': target.reactionGuid};
+      final Object data;
+      if (removal) {
+        data = fields;
+      } else {
+        data = FormData.fromMap({...fields, 'name': file!.name, 'stickerLabel': ?stickerLabel,
+          if (placement != null) 'placement': jsonEncode(placement.toMap()),
+          'attachment': await MultipartFile.fromFile(file.path!, filename: file.name)});
+      }
+      if (_svc.origin != target.serverIdentity) throw StateError('The server changed. Choose the target message again.');
+      final response = await _svc.dio.post('${_svc.apiRoot}/message/${target.endpoint}',
+        queryParameters: _svc.buildQueryParams(), options: Options(headers: _svc.headers), data: data, cancelToken: cancelToken);
+      return _svc.returnSuccessOrError(response);
+    }, retryOn502: false);
+  }
+
   /// Uploads an ordered native row as one message, with one stable temp GUID.
   Future<Response> sendStickerRow(String chatGuid, String tempGuid, List<PlatformFile> files,
       {List<String?>? stickerLabels, CancelToken? cancelToken}) async {
@@ -249,10 +280,12 @@ class MessageApi {
     if (stickerLabels != null && stickerLabels.length != files.length) {
       throw ArgumentError('Each sticker label must correspond to its file.');
     }
+    final origin = _svc.origin;
     return _svc.runApiGuarded(() async {
       if ((await stickerCapabilities(cancelToken: cancelToken))['stickerRows'] != true) {
         throw UnsupportedError('The connected server helper has not enabled native sticker rows.');
       }
+      if (_svc.origin != origin) throw StateError('The server changed. Choose the sticker row again.');
       final form = FormData.fromMap({
         'chatGuid': chatGuid,
         'tempGuid': tempGuid,
@@ -263,6 +296,7 @@ class MessageApi {
         for (var i = 0; i < files.length; i++)
           'attachment$i': await MultipartFile.fromFile(files[i].path!, filename: files[i].name),
       });
+      if (_svc.origin != origin) throw StateError('The server changed. Choose the sticker row again.');
       final response = await _svc.dio.post('${_svc.apiRoot}/message/send-sticker-row',
           queryParameters: _svc.buildQueryParams(), data: form, cancelToken: cancelToken,
           options: Options(headers: _svc.headers));
@@ -278,10 +312,12 @@ class MessageApi {
     String? stickerLabel,
     CancelToken? cancelToken,
   }) async {
+    final origin = _svc.origin;
     return _svc.runApiGuarded(() async {
       if (!await supportsStickerSending(cancelToken: cancelToken)) {
         throw UnsupportedError('The connected server helper has not enabled native sticker sending.');
       }
+      if (_svc.origin != origin) throw StateError('The server changed. Choose the sticker again.');
       final form = FormData.fromMap({
         'attachment': await MultipartFile.fromFile(file.path!, filename: file.name),
         'chatGuid': chatGuid,
@@ -289,6 +325,7 @@ class MessageApi {
         'name': file.name,
         'stickerLabel': ?stickerLabel,
       });
+      if (_svc.origin != origin) throw StateError('The server changed. Choose the sticker again.');
       final response = await _svc.dio.post(
         '${_svc.apiRoot}/message/send-sticker',
         queryParameters: _svc.buildQueryParams(),

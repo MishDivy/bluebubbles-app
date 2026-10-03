@@ -1,4 +1,6 @@
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_browser_controller.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_placement_editor.dart';
+import 'package:bluebubbles/database/global/sticker_target.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -13,43 +15,74 @@ class StickerSelection extends StatelessWidget {
       top: false,
       child: Padding(
         padding: const EdgeInsets.all(12),
-        child: Column(
-          children: [
-            Text(
-              controller.selection.length > 1
-                  ? '${controller.selection.length} stickers, in selection order'
-                  : selected.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            Row(
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: MediaQuery.sizeOf(context).height * 0.6),
+          child: SingleChildScrollView(
+            child: Column(
               children: [
-                Checkbox(
-                  value: !controller.nativeSticker.value,
-                  onChanged: controller.busy.value || controller.selection.length > 1
-                      ? null
-                      : (value) => controller.nativeSticker.value = value != true,
+                Text(
+                  controller.selection.length > 1
+                      ? '${controller.selection.length} stickers, in selection order'
+                      : selected.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                const Expanded(child: Text('Send as normal image')),
-                FilledButton(
-                  onPressed: controller.busy.value || (controller.nativeSticker.value && !controller.canSendNative)
-                      ? null
-                      : controller.send,
-                  child: Text(
-                    controller.selection.length > 1
-                        ? 'Send row'
-                        : controller.nativeSticker.value
-                        ? 'Send sticker'
-                        : 'Send image',
-                  ),
+                if (controller.target?.operation == NativeStickerOperation.placement)
+                  StickerPlacementEditor(controller: controller),
+                if (controller.target?.operation == NativeStickerOperation.tapback) ...[
+                  const Text('Sticker tapbacks share your reaction slot with classic and emoji tapbacks.'),
+                  if (controller.targetPreview != null)
+                    SizedBox(
+                      height: 60,
+                      child: Image.memory(controller.targetPreview!.bytes, semanticLabel: 'Selected message part'),
+                    ),
+                ],
+                Row(
+                  children: [
+                    if (controller.target == null) ...[
+                      Checkbox(
+                        value: !controller.nativeSticker.value,
+                        onChanged: controller.busy.value || controller.selection.length > 1
+                            ? null
+                            : (value) => controller.nativeSticker.value = value != true,
+                      ),
+                      const Expanded(child: Text('Send as normal image')),
+                    ] else
+                      const Spacer(),
+                    FilledButton(
+                      onPressed: controller.busy.value || (controller.nativeSticker.value && !controller.canSendNative)
+                          ? null
+                          : controller.send,
+                      child: Text(
+                        controller.submitted.value
+                            ? 'Queued'
+                            : controller.target?.operation == NativeStickerOperation.placement
+                            ? 'Send placement'
+                            : controller.target != null
+                            ? 'Send tapback'
+                            : controller.selection.length > 1
+                            ? 'Send row'
+                            : controller.nativeSticker.value
+                            ? 'Send sticker'
+                            : 'Send image',
+                      ),
+                    ),
+                  ],
                 ),
+                Text(
+                  controller.target == null
+                      ? 'Sends separately from your draft and reply. Up to 500 KiB and 618 × 618 per file.'
+                      : controller.submitted.value
+                      ? 'Queued once. Check the conversation for the result.'
+                      : 'This action leaves your draft and reply unchanged.',
+                ),
+                if (controller.selection.length > 1)
+                  const Text('Normal image sending is available with one selection.'),
+                if (controller.selection.length > 1 && !controller.rowSupported.value)
+                  const Text('The connected helper has not enabled native sticker rows.'),
               ],
             ),
-            const Text('Sends separately from your draft and reply. Up to 500 KiB and 618 × 618 per file.'),
-            if (controller.selection.length > 1) const Text('Normal image sending is available with one selection.'),
-            if (controller.selection.length > 1 && !controller.rowSupported.value)
-              const Text('The connected helper has not enabled native sticker rows.'),
-          ],
+          ),
         ),
       ),
     );

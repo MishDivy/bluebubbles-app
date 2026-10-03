@@ -3,6 +3,7 @@ import 'package:bluebubbles/app/state/message_state_scope.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/reaction/reaction_holder.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/ui/reaction_helpers.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 import 'package:bluebubbles/services/ui/chat/conversation_view_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -70,7 +71,8 @@ class StickerObserver extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = MessageStateScope.of(context);
     return Obx(() {
-      final allStickers = state.associatedMessages.where((e) => e.associatedMessageType == "sticker").toList();
+      final allStickers = state.associatedMessages.where((e) => e.associatedMessageType == "sticker" &&
+          !StickerHelper.isUnconfirmedTargetedEvent(e)).toList();
       final stickersForPart = messageParts.length == 1
           ? allStickers
           : allStickers.where((s) => (s.associatedMessagePart ?? 0) == part.part).toList();

@@ -12,6 +12,8 @@ class ServerDetails {
   final bool customEmojiReactions;
   final bool stickerSending;
   final bool stickerRows;
+  final bool stickerPlacement;
+  final bool stickerReactions;
 
   const ServerDetails({
     required this.macOSVersion,
@@ -24,6 +26,8 @@ class ServerDetails {
     this.customEmojiReactions = false,
     this.stickerSending = false,
     this.stickerRows = false,
+    this.stickerPlacement = false,
+    this.stickerReactions = false,
   });
 
   const ServerDetails.empty()
@@ -36,12 +40,16 @@ class ServerDetails {
       proxyService = null,
       customEmojiReactions = false,
       stickerSending = false,
-      stickerRows = false;
+      stickerRows = false,
+      stickerPlacement = false,
+      stickerReactions = false;
 
   /// Requires an explicit capability negotiated with the connected helper.
   bool get supportsCustomEmojiReactions => customEmojiReactions;
   bool get supportsStickerSending => stickerSending;
   bool get supportsStickerRows => stickerRows;
+  bool get supportsStickerPlacement => stickerPlacement;
+  bool get supportsStickerReactions => stickerReactions;
 
   // ---------------------------------------------------------------------------
   // Server feature helpers

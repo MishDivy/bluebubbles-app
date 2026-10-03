@@ -17,6 +17,10 @@ Each resource has an interface and a concrete action file → `interfaces/CLAUDE
 - Owns the complete outbound send pipeline: serial queue, `_buildOutgoingMessages` / `_persistOutgoingMessages` / `prepAttachment`, HTTP + socket race via `_sendWithRace()`, send-progress trackers, GUID swap (`_matchMessageWithExisting()`), and error marking
 - Existing attachment metadata preserves native sticker intent and original bytes through queue and isolate sends. Marked native stickers use a dedicated endpoint and reject generic retry because an unsuccessful response can have an unknown delivery outcome.
 - Native rows prepare all selected originals, persist once, and send one multipart request. HTTP and socket confirmation reconcile exact indexed attachment GUID pairs; no filename or database-order matching is used for rows.
+- `OutgoingTargetedSticker` shares this queue and preparation path. Placement, add/replace tapback,
+  and removal retain immutable target intent in existing metadata and require matching native
+  event type, parent GUID and real part before releasing progress. Uploads reconcile one distinct
+  asset GUID; removal may link old artwork but creates no asset. These operations never autoretry.
 
 ## Incoming Message Handler
 - `incoming_message_handler.dart` — `IncomingMessageHandler` / `IncomingMsgHandler` GetIt getter

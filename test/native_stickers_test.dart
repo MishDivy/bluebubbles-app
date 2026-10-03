@@ -1,6 +1,9 @@
 import 'dart:io';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_target_preview.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_placement_editor.dart';
 import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 import 'package:bluebubbles/helpers/types/helpers/message_helper.dart';
 import 'package:bluebubbles/helpers/ui/reaction_helpers.dart';
@@ -42,9 +45,18 @@ class _OfflineApi implements BaseApi {
   final Object? capability;
   final int postStatus;
   final Object? rowCapability;
+  final Object? placementCapability;
+  final Object? reactionsCapability;
+  String originValue = 'https://offline.trycloudflare.invalid';
   final requests = <RequestOptions>[];
   final retries = <bool>[];
-  _OfflineApi({this.capability = true, this.rowCapability = false, this.postStatus = 200}) {
+  _OfflineApi({
+    this.capability = true,
+    this.rowCapability = false,
+    this.placementCapability = false,
+    this.reactionsCapability = false,
+    this.postStatus = 200,
+  }) {
     dio.interceptors.add(
       InterceptorsWrapper(
         onRequest: (request, handler) {
@@ -56,7 +68,12 @@ class _OfflineApi implements BaseApi {
               data: {
                 'data': {
                   'guid': 'sent',
-                  'privateApiCapabilities': {'stickerSending': capability, 'stickerRows': rowCapability},
+                  'privateApiCapabilities': {
+                    'stickerSending': capability,
+                    'stickerRows': rowCapability,
+                    'stickerPlacement': placementCapability,
+                    'stickerReactions': reactionsCapability,
+                  },
                 },
               },
             ),
@@ -68,7 +85,7 @@ class _OfflineApi implements BaseApi {
   @override
   final dio = Dio();
   @override
-  String get origin => 'https://offline.trycloudflare.invalid';
+  String get origin => originValue;
   @override
   String get apiRoot => '$origin/api/v1';
   @override
@@ -107,6 +124,9 @@ class _Folders extends StickerFolderService {
   final rows = <List<StickerFolderEntry>>[];
   bool? sentNative;
   String? folder = 'content://test/tree/selected';
+  final targets = <NativeStickerTarget>[];
+  final placements = <StickerPlacement?>[];
+  Completer<void>? targetPending;
   @override
   Future<String?> currentFolder() async => folder;
   @override
@@ -133,6 +153,20 @@ class _Folders extends StickerFolderService {
 
   @override
   Future<void> sendRow(Chat chat, List<StickerFolderEntry> entries) async => rows.add(entries);
+
+  @override
+  Future<void> sendTargeted(
+    Chat chat,
+    StickerFolderEntry entry,
+    NativeStickerTarget target, {
+    StickerPlacement? placement,
+    bool Function()? canQueue,
+  }) async {
+    if (targetPending != null) await targetPending!.future;
+    if (canQueue?.call() == false) return;
+    targets.add(target);
+    placements.add(placement);
+  }
 }
 
 class _DeferredFolders extends _Folders {
@@ -140,6 +174,23 @@ class _DeferredFolders extends _Folders {
   @override
   Future<StickerFolderPage> list({required String uri, int offset = 0}) =>
       (pending[uri] = Completer<StickerFolderPage>()).future;
+}
+
+class _SwitchingFile implements File {
+  final File file;
+  final void Function() onLength;
+  _SwitchingFile(this.file, this.onLength);
+  @override
+  Future<int> length() async {
+    final value = await file.length();
+    onLength();
+    return value;
+  }
+
+  @override
+  Stream<List<int>> openRead([int? start, int? end]) => file.openRead(start, end);
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
 }
 
 class _AttachmentBox implements Box<Attachment> {
@@ -178,6 +229,280 @@ void main() {
   });
 
   PlatformFile selected() => PlatformFile(name: 'animated.gif', path: file.path, size: 9);
+
+  NativeStickerTarget target(NativeStickerOperation operation, {int part = 7, String? reactionGuid}) =>
+      NativeStickerTarget(
+        serverIdentity: 'https://offline.trycloudflare.invalid',
+        chatGuid: 'iMessage;-;chat',
+        messageGuid: 'parent-guid',
+        partIndex: part,
+        operation: operation,
+        reactionGuid: reactionGuid,
+      );
+
+  StickerPlacement geometry() => StickerPlacement(x: 0.5, y: 0.75, scale: 1.2, rotation: math.pi / 2, parentWidth: 240);
+
+  test('immutable target intent rejects transient targets and unrelated removal IDs', () {
+    final value = target(NativeStickerOperation.removeTapback, reactionGuid: 'current-2007');
+    expect(NativeStickerTarget.fromMap(jsonDecode(jsonEncode(value.toMap()))).reactionGuid, 'current-2007');
+    expect(() => target(NativeStickerOperation.tapback, reactionGuid: 'unrelated'), throwsArgumentError);
+    expect(() => target(NativeStickerOperation.removeTapback), throwsArgumentError);
+    expect(() => target(NativeStickerOperation.removeTapback, reactionGuid: 'temp-reaction'), throwsArgumentError);
+    expect(() => target(NativeStickerOperation.placement, part: -1), throwsArgumentError);
+    expect(() => NativeStickerTarget.fromMap({...value.toMap(), 'operation': 'sendAttachment'}), throwsArgumentError);
+  });
+
+  test('placement bounds accept finite native units and retain measured parent width', () {
+    final value = geometry();
+    expect(StickerPlacement.fromMap(jsonDecode(jsonEncode(value.toMap()))).toMap(), value.toMap());
+    expect(value.copyWith(x: -4, y: 4, scale: 0.01, rotation: -2 * math.pi).parentWidth, 240);
+    for (final field in ['x', 'y', 'scale', 'rotation', 'parentWidth']) {
+      for (final invalid in [double.nan, double.infinity, double.negativeInfinity, true, '1']) {
+        expect(() => StickerPlacement.fromMap({...value.toMap(), field: invalid}), throwsA(anything));
+      }
+    }
+    expect(() => value.copyWith(x: 4.001), throwsArgumentError);
+    expect(() => value.copyWith(scale: 0), throwsArgumentError);
+    expect(() => value.copyWith(rotation: 2 * math.pi + 0.01), throwsArgumentError);
+    expect(() => StickerPlacement.fromMap({...value.toMap(), 'parentWidth': 4097}), throwsArgumentError);
+  });
+
+  test('placement and tapback upload original bytes to distinct one-shot endpoints', () async {
+    for (final operation in [NativeStickerOperation.placement, NativeStickerOperation.tapback]) {
+      final api = _OfflineApi(placementCapability: true, reactionsCapability: true, postStatus: 502);
+      await expectLater(
+        MessageApi(api).sendTargetedSticker(
+          target(operation),
+          'temp-one-operation',
+          file: selected(),
+          placement: operation == NativeStickerOperation.placement ? geometry() : null,
+          stickerLabel: 'Animated',
+        ),
+        throwsA(isA<Response>()),
+      );
+      final posts = api.requests.where((request) => request.method == 'POST').toList();
+      expect(posts, hasLength(1));
+      expect(posts.single.path, endsWith('/message/${target(operation).endpoint}'));
+      expect(posts.single.queryParameters, {'guid': 'test-auth'});
+      final form = posts.single.data as FormData;
+      final fields = Map.fromEntries(form.fields);
+      expect(fields['tempGuid'], 'temp-one-operation');
+      expect(fields['selectedMessageGuid'], 'parent-guid');
+      expect(fields['partIndex'], '7');
+      expect(fields['name'], 'animated.gif');
+      expect(fields.containsKey('reactionGuid'), false);
+      expect(fields.containsKey('placement'), operation == NativeStickerOperation.placement);
+      if (operation == NativeStickerOperation.placement) expect(jsonDecode(fields['placement']!), geometry().toMap());
+      expect(form.files.single.key, 'attachment');
+      expect(await form.files.single.value.finalize().expand((chunk) => chunk).toList(), await file.readAsBytes());
+      expect(api.retries.where((retry) => !retry), hasLength(1));
+      expect(posts.any((request) => request.path.endsWith('/message/attachment')), false);
+    }
+  });
+
+  test('removal sends JSON with current reaction GUID and no new artwork', () async {
+    final api = _OfflineApi(reactionsCapability: true);
+    await MessageApi(
+      api,
+    ).sendTargetedSticker(target(NativeStickerOperation.removeTapback, reactionGuid: 'current-2007'), 'temp-remove');
+    final post = api.requests.last;
+    expect(post.path, endsWith('/message/remove-sticker-tapback'));
+    expect(post.data, {
+      'chatGuid': 'iMessage;-;chat',
+      'tempGuid': 'temp-remove',
+      'selectedMessageGuid': 'parent-guid',
+      'partIndex': 7,
+      'reactionGuid': 'current-2007',
+    });
+    await expectLater(
+      MessageApi(api).sendTargetedSticker(target(NativeStickerOperation.tapback), 'temp-no-asset'),
+      throwsArgumentError,
+    );
+  });
+
+  test('per-operation capability and server identity fail closed before any native POST', () async {
+    for (final operation in NativeStickerOperation.values) {
+      for (final capability in [false, null, 'true', 1]) {
+        final api = _OfflineApi(capability: true, placementCapability: capability, reactionsCapability: capability);
+        await expectLater(
+          MessageApi(api).sendTargetedSticker(
+            target(operation, reactionGuid: operation == NativeStickerOperation.removeTapback ? 'current-2007' : null),
+            'temp-gated',
+            file: operation == NativeStickerOperation.removeTapback ? null : selected(),
+            placement: operation == NativeStickerOperation.placement ? geometry() : null,
+          ),
+          throwsUnsupportedError,
+        );
+        expect(api.requests.where((request) => request.method == 'POST'), isEmpty);
+      }
+    }
+    final api = _OfflineApi(reactionsCapability: true)..originValue = 'https://different.invalid';
+    await expectLater(
+      MessageApi(api).sendTargetedSticker(target(NativeStickerOperation.tapback), 'temp-switch', file: selected()),
+      throwsStateError,
+    );
+    expect(api.requests, isEmpty);
+  });
+
+  test('target intent survives message and asset serialization with separate GUIDs', () {
+    final message = Message(guid: 'temp-target', text: '', metadata: {'existing': 'kept'});
+    final asset = Attachment(
+      guid: 'source',
+      transferName: 'animated.gif',
+      isOutgoing: true,
+      metadata: {'stickerLabel': 'Animated'},
+    );
+    final item = OutgoingTargetedSticker(
+      chat: Chat(guid: 'iMessage;-;chat'),
+      message: message,
+      target: target(NativeStickerOperation.placement),
+      placement: geometry(),
+      attachment: asset,
+    );
+    item.ensureIntent();
+    expect(message.associatedMessageGuid, 'parent-guid');
+    expect(message.associatedMessagePart, 7);
+    expect(message.associatedMessageType, 'sticker');
+    expect(asset.guid, 'temp-target-sticker');
+    expect(asset.guid, isNot(message.guid));
+    expect(asset.metadata!['preserveOriginalBytes'], true);
+    expect(
+      Attachment.fromMap(asset.toMap()).metadata!['nativeStickerTarget'],
+      target(NativeStickerOperation.placement).toMap(),
+    );
+    message.error = 1;
+    final reloaded = Message.fromMap(message.toMap());
+    expect(reloaded.metadata!['nativeStickerTargetSend'], true);
+    expect(reloaded.metadata!['existing'], 'kept');
+    expect(reloaded.metadata!['nativeStickerPlacement'], geometry().toMap());
+  });
+
+  test('server switch during multipart staging blocks targeted, row and single native sends', () async {
+    for (final kind in ['target', 'row', 'single']) {
+      final api = _OfflineApi(reactionsCapability: true, rowCapability: true);
+      await IOOverrides.runZoned(() async {
+        final request = switch (kind) {
+          'target' => MessageApi(
+            api,
+          ).sendTargetedSticker(target(NativeStickerOperation.tapback), 'temp-switch', file: selected()),
+          'row' => MessageApi(api).sendStickerRow('chat', 'temp-switch', [selected(), selected()]),
+          _ => MessageApi(api).sendSticker('chat', 'temp-switch', selected()),
+        };
+        await expectLater(request, throwsStateError);
+      }, createFile: (_) => _SwitchingFile(file, () => api.originValue = 'https://new-server.invalid'));
+      expect(api.requests.where((request) => request.method == 'POST'), isEmpty);
+    }
+  });
+
+  test('confirmed native partial status update skips send verification but echoes remain strict', () {
+    final confirmed = Message(guid: 'native-event', metadata: {'nativeStickerTargetSend': true});
+    expect(StickerHelper.shouldVerifyTargetedEcho(confirmed, hasAttachments: false), false);
+    expect(StickerHelper.shouldVerifyTargetedEcho(confirmed, tempGuid: 'temp-attempt', hasAttachments: false), true);
+    expect(StickerHelper.shouldVerifyTargetedEcho(confirmed, hasAttachments: true), true);
+    confirmed.guid = 'temp-attempt';
+    expect(StickerHelper.shouldVerifyTargetedEcho(confirmed, hasAttachments: false), true);
+    confirmed.metadata = null;
+    expect(StickerHelper.shouldVerifyTargetedEcho(confirmed, tempGuid: 'temp-attempt', hasAttachments: true), false);
+  });
+
+  test('socket-first target echo maps the asset GUID, and HTTP-first late echo is idempotent', () {
+    final pending = Message(
+      guid: 'temp-target',
+      metadata: {
+        'nativeStickerTargetSend': true,
+        'nativeStickerTarget': target(NativeStickerOperation.tapback).toMap(),
+      },
+    );
+    final asset = Attachment(guid: 'temp-target-sticker', transferName: 'same.gif')..id = 88;
+    attachmentBox.attachments[88] = asset;
+    pending.dbAttachments.add(asset);
+    final confirmed = Message(
+      guid: 'native-2007',
+      isFromMe: true,
+      associatedMessageGuid: 'parent-guid',
+      associatedMessagePart: 7,
+      associatedMessageType: 'sticker-reaction',
+    );
+    expect(StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'real-asset')]), {
+      'real-asset': 'temp-target-sticker',
+    });
+    pending.guid = 'native-2007';
+    asset.guid = 'real-asset';
+    expect(StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'real-asset')]), {
+      'real-asset': 'real-asset',
+    });
+    confirmed.associatedMessagePart = 0;
+    expect(
+      () => StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'real-asset')]),
+      throwsStateError,
+    );
+    confirmed.associatedMessagePart = 7;
+    expect(() => StickerHelper.targetedReplacementGuids(pending, confirmed, []), throwsStateError);
+    expect(
+      () => StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'A'), Attachment(guid: 'B')]),
+      throwsStateError,
+    );
+    pending.metadata!['nativeStickerTarget'] = {'operation': 'sendAttachment'};
+    expect(
+      () => StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'real-asset')]),
+      throwsA(anything),
+    );
+  });
+
+  test('3007 confirmation is a new event and may reference old artwork without creating an asset', () {
+    final pending = Message(
+      guid: 'temp-remove',
+      metadata: {
+        'nativeStickerTargetSend': true,
+        'nativeStickerTarget': target(NativeStickerOperation.removeTapback, reactionGuid: 'current-2007').toMap(),
+      },
+    );
+    final confirmed = Message(
+      guid: 'native-3007',
+      isFromMe: true,
+      associatedMessageGuid: 'parent-guid',
+      associatedMessagePart: 7,
+      associatedMessageType: '-sticker-reaction',
+    );
+    expect(
+      StickerHelper.targetedReplacementGuids(pending, confirmed, [Attachment(guid: 'linked-old-artwork')]),
+      isEmpty,
+    );
+    confirmed.guid = 'current-2007';
+    expect(() => StickerHelper.targetedReplacementGuids(pending, confirmed, []), throwsStateError);
+  });
+
+  test('unconfirmed targeted removal does not consume an existing own sticker tapback slot', () {
+    final current = Message(
+      guid: 'current-2007',
+      isFromMe: true,
+      associatedMessageGuid: 'parent-guid',
+      associatedMessagePart: 7,
+      associatedMessageType: 'sticker-reaction',
+      dateCreated: DateTime(2026),
+    );
+    final pending = Message(
+      guid: 'temp-remove',
+      isFromMe: true,
+      associatedMessageGuid: 'parent-guid',
+      associatedMessagePart: 7,
+      associatedMessageType: '-sticker-reaction',
+      dateCreated: DateTime(2026, 2),
+      metadata: {'nativeStickerTargetSend': true},
+    );
+    final placed = Message(
+      guid: 'independent-1000',
+      isFromMe: true,
+      associatedMessageGuid: 'parent-guid',
+      associatedMessagePart: 7,
+      associatedMessageType: 'sticker',
+      dateCreated: DateTime(2026, 3),
+    );
+    expect(getUniqueReactionMessages([current, pending, placed]).single.guid, 'current-2007');
+    expect(StickerHelper.isUnconfirmedTargetedEvent(pending), true);
+    pending.guid = 'native-3007';
+    expect(getUniqueReactionMessages([current, pending, placed]), isEmpty);
+  });
 
   test('row uses one ordered multipart request and never retries 502', () async {
     final api = _OfflineApi(rowCapability: true, postStatus: 502);
@@ -360,7 +685,9 @@ void main() {
       'real-2': 'temp-2',
     });
     expect(StickerHelper.rowReplacementGuids(after, after.reversed.toList()), {
-      'real-0': 'real-0', 'real-1': 'real-1', 'real-2': 'real-2',
+      'real-0': 'real-0',
+      'real-1': 'real-1',
+      'real-2': 'real-2',
     });
     expect(() => StickerHelper.rowReplacementGuids(before, after.take(2).toList()), throwsStateError);
   });
@@ -462,11 +789,16 @@ void main() {
       if (calls == 2) throw PlatformException(code: 'revoked', message: 'Folder access was revoked.');
       return {'path': staged.path, 'name': 'staged.gif', 'size': 3};
     });
-    addTearDown(() => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null));
-    await expectLater(const StickerFolderService(channel: channel).sendRow(Chat(guid: 'chat'), [
-      const StickerFolderEntry(uri: 'one', name: 'one.gif', directory: false, size: 3),
-      const StickerFolderEntry(uri: 'two', name: 'two.gif', directory: false, size: 3),
-    ]), throwsA(isA<PlatformException>()));
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null),
+    );
+    await expectLater(
+      const StickerFolderService(channel: channel).sendRow(Chat(guid: 'chat'), [
+        const StickerFolderEntry(uri: 'one', name: 'one.gif', directory: false, size: 3),
+        const StickerFolderEntry(uri: 'two', name: 'two.gif', directory: false, size: 3),
+      ]),
+      throwsA(isA<PlatformException>()),
+    );
     expect(calls, 2);
     expect(await staged.exists(), isFalse);
     expect(await file.exists(), isTrue);
@@ -526,8 +858,16 @@ void main() {
     );
     final first = associated('placement-1', 'sticker', 1);
     final second = associated('placement-2', 'sticker', 2);
-    first.metadata = {'sticker': {'placement': {'sir': false, 'spv': 0}}};
-    second.metadata = {'sticker': {'placement': {'sir': true, 'spv': 0}}};
+    first.metadata = {
+      'sticker': {
+        'placement': {'sir': false, 'spv': 0},
+      },
+    };
+    second.metadata = {
+      'sticker': {
+        'placement': {'sir': true, 'spv': 0},
+      },
+    };
     expect(ReactionTypes.fromServer(1000, null), 'sticker');
     expect(ReactionTypes.isReaction(first.associatedMessageType), isFalse);
     expect(ReactionTypes.isReaction(second.associatedMessageType), isFalse);
@@ -607,6 +947,51 @@ void main() {
     );
     expect(Map.fromEntries((api.requests.last.data as FormData).fields)['tempGuid'], 'temp-stable');
     expect(api.requests.last.path, endsWith('/message/send-sticker'));
+  });
+
+  test('target and geometry survive interface and isolate action serialization', () async {
+    final api = _OfflineApi(placementCapability: true);
+    GetIt.I.registerSingleton<HttpService>(
+      HttpService()
+        ..originOverride = api.origin
+        ..message = MessageApi(api),
+    );
+    isIsolateOverride = true;
+    await SendMessageInterface.sendTargetedSticker(
+      target: target(NativeStickerOperation.placement),
+      tempGuid: 'temp-isolate-target',
+      file: selected(),
+      placement: geometry(),
+    );
+    final fields = Map.fromEntries((api.requests.last.data as FormData).fields);
+    expect(api.requests.last.path, endsWith('/message/send-sticker-placement'));
+    expect(fields['tempGuid'], 'temp-isolate-target');
+    expect(fields['selectedMessageGuid'], 'parent-guid');
+    expect(fields['partIndex'], '7');
+    expect(jsonDecode(fields['placement']!), geometry().toMap());
+  });
+
+  test('target invalidated during SAF staging cleans its owned original without queueing', () async {
+    const channel = MethodChannel('test-stale-sticker-target');
+    final staged = await File('${directory.path}/staged-target.gif').writeAsBytes([1, 2, 3]);
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+      channel,
+      (call) async => {'path': staged.path, 'name': 'staged-target.gif', 'size': 3},
+    );
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null),
+    );
+    await expectLater(
+      const StickerFolderService(channel: channel).sendTargeted(
+        Chat(guid: 'iMessage;-;chat'),
+        const StickerFolderEntry(uri: 'one', name: 'one.gif', directory: false, size: 3),
+        target(NativeStickerOperation.tapback),
+        canQueue: () => false,
+      ),
+      throwsStateError,
+    );
+    expect(await staged.exists(), false);
+    expect(await file.exists(), true);
   });
 
   test('persisted attachment metadata retains native intent and blocks generic retry before mutations', () async {
@@ -705,21 +1090,149 @@ void main() {
     _Folders folders, {
     required bool supported,
     String chatGuid = 'iMessage;-;chat',
+    NativeStickerTarget? stickerTarget,
+    StickerTargetPreview? preview,
+    bool Function()? isTargetCurrent,
   }) async {
     GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
     GetIt.I.registerSingleton<ThemesService>(_Themes());
     GetIt.I.registerSingleton<BaseLogger>(BaseLogger());
-    GetIt.I.registerSingleton<HttpService>(HttpService()..message = MessageApi(_OfflineApi(capability: supported)));
+    GetIt.I.registerSingleton<HttpService>(
+      HttpService()
+        ..originOverride = 'https://offline.trycloudflare.invalid'
+        ..message = MessageApi(
+          _OfflineApi(capability: supported, placementCapability: supported, reactionsCapability: supported),
+        ),
+    );
     await tester.pumpWidget(
       MaterialApp(
         home: StickerBrowser(
           chat: Chat(guid: chatGuid),
           folders: folders,
+          target: stickerTarget,
+          targetPreview: preview,
+          isTargetCurrent: isTargetCurrent,
         ),
       ),
     );
     await tester.pumpAndSettle();
   }
+
+  StickerTargetPreview targetPreview() => StickerTargetPreview(
+    Uint8List.fromList(image.encodePng(image.Image(width: 24, height: 12))),
+    const Size(240, 120),
+  );
+
+  testWidgets('placement preview uses measured native parent width and requires explicit single send', (tester) async {
+    final folders = _Folders()..targetPending = Completer<void>();
+    await harness(
+      tester,
+      folders,
+      supported: true,
+      stickerTarget: target(NativeStickerOperation.placement),
+      preview: targetPreview(),
+    );
+    await tester.tap(find.text('a.png'));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<StickerBrowser>(find.byType(StickerBrowser)).parentController;
+    expect(find.byType(StickerPlacementEditor), findsOneWidget);
+    expect(find.byType(Checkbox), findsNothing);
+    expect(controller.selection, hasLength(1));
+    expect(controller.placement.value!.parentWidth, 240);
+    expect(folders.targets, isEmpty);
+    await tester.ensureVisible(find.text('Send placement'));
+    await tester.tap(find.text('Send placement'));
+    await tester.pump();
+    await controller.send();
+    expect(folders.targets, isEmpty);
+    folders.targetPending!.complete();
+    await tester.pumpAndSettle();
+    expect(folders.targets.single.partIndex, 7);
+    expect(folders.placements.single!.parentWidth, 240);
+    expect(controller.submitted.value, true);
+    await controller.send();
+    expect(folders.targets, hasLength(1));
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Queued')).onPressed, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('stale message part and server change prevent target submission', (tester) async {
+    final folders = _Folders();
+    var current = true;
+    await harness(
+      tester,
+      folders,
+      supported: true,
+      stickerTarget: target(NativeStickerOperation.tapback),
+      isTargetCurrent: () => current,
+    );
+    await tester.tap(find.text('a.png'));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<StickerBrowser>(find.byType(StickerBrowser)).parentController;
+    current = false;
+    expect(controller.canSendNative, false);
+    await controller.send();
+    expect(folders.targets, isEmpty);
+    current = true;
+    HttpSvc.originOverride = 'https://changed.invalid';
+    expect(controller.canSendNative, false);
+    await controller.send();
+    expect(folders.targets, isEmpty);
+    await controller.checkCapability();
+    await tester.pump();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Send tapback')).onPressed, isNull);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('disposing target browser while staging prevents queueing and preserves draft', (tester) async {
+    final folders = _Folders()..targetPending = Completer<void>();
+    await harness(tester, folders, supported: true, stickerTarget: target(NativeStickerOperation.tapback));
+    await tester.tap(find.text('a.png'));
+    await tester.pumpAndSettle();
+    final controller = tester.widget<StickerBrowser>(find.byType(StickerBrowser)).parentController;
+    final composer = ConversationViewController(controller.chat);
+    SettingsSvc.settings.spellcheck.value = false;
+    composer.textController.text = 'Unrelated draft';
+    final pending = controller.send();
+    await tester.pumpWidget(const SizedBox());
+    folders.targetPending!.complete();
+    await pending;
+    expect(folders.targets, isEmpty);
+    expect(composer.textController.text, 'Unrelated draft');
+    expect(controller.active, false);
+    composer.textController.dispose();
+  });
+
+  testWidgets('placement is disabled without exact part preview and tiny editor constraints are safe', (tester) async {
+    final folders = _Folders();
+    await harness(tester, folders, supported: true, stickerTarget: target(NativeStickerOperation.placement));
+    await tester.tap(find.text('a.png'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<FilledButton>(find.widgetWithText(FilledButton, 'Send placement')).onPressed, isNull);
+    expect(find.text('A measured preview of this message part is required to place a sticker.'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+    final controller = StickerBrowserController(
+      Chat(guid: 'iMessage;-;chat'),
+      folders,
+      target: target(NativeStickerOperation.placement),
+      targetPreview: targetPreview(),
+    );
+    controller.select(const StickerFolderEntry(uri: 'one', name: 'one.png', directory: false, size: 10));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            child: SizedBox(width: 20, child: StickerPlacementEditor(controller: controller)),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
+    expect(controller.placement.value!.parentWidth, 240);
+    await tester.pumpWidget(const SizedBox());
+    controller.onClose();
+  });
 
   testWidgets('selection defaults native and sends only after explicit Send', (tester) async {
     final folders = _Folders();

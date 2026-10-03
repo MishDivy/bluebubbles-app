@@ -54,6 +54,21 @@ one queued message and one native send, not a sequence of separate messages.
 The helper returns the exact message GUID and ordered attachment GUIDs. The
 server verifies their linkage; Android reconciles each distinct local asset.
 
+Targeted actions use `send-sticker-placement`, `send-sticker-tapback`, or
+`remove-sticker-tapback` beneath the same message API. Each carries the exact
+chat, message GUID, part index and one attempt GUID. Placement also carries
+finite `x`, `y`, `scale`, `rotation` and `parentWidth` values. Tapback removal
+requires the current confirmed own reaction GUID and accepts no uploaded asset.
+The helper rechecks the native target and removal ownership before dispatch.
+
+Android captures only the selected message part in memory for the placement
+editor. A gallery containing several parts cannot supply a placement preview.
+The editor's position, scale and rotation controls are approximate until paired
+device tests establish native sizing. Changing the server, deleting the target,
+closing the browser during staging, or losing the operation capability prevents
+the queued action from using a stale target. Unconfirmed tapbacks do not replace
+the existing visible reaction slot.
+
 The server forwards `send-sticker` with `chatGuid`, a server-owned staged
 `filePath`, optional `filename` and optional `stickerLabel`. The helper returns
 the constructed message's own `identifier`, not a chat-wide last-message value.
@@ -66,7 +81,8 @@ capabilities. Missing, stale or disconnected helpers disable sending. The helper
 requires an experimental build opt-in and matching runtime method signatures.
 Each additional operation has its own capability. Experimental row builds now
 advertise `stickerRows` when their native signatures match. Placement and tapback
-work must pass their own guards and tests; the production helper still has none
+builds likewise require `stickerPlacement` and `stickerReactions`. They must pass
+their own guards and tests; the production helper still has none
 of these sticker-sending capabilities enabled.
 
 Uploads are bounded to 500 KiB, PNG/APNG, GIF or JPEG, at most 618 pixels on either
@@ -78,6 +94,26 @@ extensions and Android MIME hints alone are not sufficient validation.
 Any ambiguous dispatch result needs inspection before another send. An HTTP
 timeout or proxy error does not establish that nothing was sent. Do not retry
 automatically or change the send intent to an ordinary attachment.
+
+## Received HEIC previews
+
+The candidate server has an authenticated, GUID-only
+`GET /api/v1/attachment/:guid/sticker-preview` endpoint. A separately packaged
+public ImageIO executable derives PNG or timed APNG artwork in a private bounded
+cache. It checks decoded pixels, alpha, dimensions and animation timing before
+publishing a preview. Original attachment downloads remain byte-preserving.
+
+Unknown effects, untimed multi-image files and unsupported auxiliary planes
+return an explicit unavailable result. The narrow static HEIC raster exception
+and its limits are documented in the server's
+`packages/server/native/sticker-preview/README.md`. A derived raster does not
+establish fidelity for an unknown effect. Android integration and paired-device
+acceptance remain separate gates.
+
+The Mac artifact workflow defaults to the stable helper. Its explicit
+`native_stickers` input selects the pinned experimental helper and includes the
+converter hash in the manifest. Building an artifact does not install it, change
+the current startup owner, or enable an experimental helper in production.
 
 ## Android folder access
 
