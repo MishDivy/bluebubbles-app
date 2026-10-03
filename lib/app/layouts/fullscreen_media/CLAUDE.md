@@ -31,6 +31,9 @@ Both dispatch on the attachment's mime type and render `FullscreenImage` or `Ful
 - Video player is disposed when the route is popped
 - Shares/saves to gallery are triggered from within the action bar
 - `FullscreenImage` uses the file/memory providers in `attachment/looping_image.dart` for continuous animation, including finite-play APNGs. Native decoding, frame timing and PhotoView zoom remain unchanged; source bytes are not rewritten.
+- Native HEIC stickers use `StickerAssetImage`'s bounded transparent display preview as the
+  `PhotoView` provider. Original save/share paths stay separate. Unsupported or invalid previews
+  retain an explicit Retry fallback; they do not become a static frame or JPEG.
 
 ## Related
 - Attachment models: `lib/database/io/attachment.dart`

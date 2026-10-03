@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/live_photo_mixin.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/sticker_asset_image.dart';
 import 'package:bluebubbles/app/layouts/fullscreen_media/dialogs/metadata_dialog.dart';
 import 'package:bluebubbles/utils/share.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -70,6 +72,7 @@ class _FullscreenImageState extends State<FullscreenImage>
   }
 
   Future<void> initBytes() async {
+    if (StickerHelper.requiresNativePreview(attachment)) return;
     // For web, we need bytes in memory
     if (kIsWeb || file.path == null) {
       if (attachment.mimeType?.contains("image/tif") ?? false) {
@@ -120,8 +123,13 @@ class _FullscreenImageState extends State<FullscreenImage>
     );
   }
 
-  Widget _buildPhotoView(BuildContext context) {
-    if (bytes == null && compatiblePath == null) {
+  Widget _buildPhotoView(BuildContext context, {ImageProvider? stickerPreviewProvider, Widget? stickerPreviewFailure}) {
+    if (stickerPreviewProvider == null && StickerHelper.requiresNativePreview(attachment)) {
+      return StickerAssetImage(attachment: attachment,
+        imageBuilder: (context, provider, fallback) => _buildPhotoView(context,
+          stickerPreviewProvider: provider, stickerPreviewFailure: fallback));
+    }
+    if (stickerPreviewProvider == null && bytes == null && compatiblePath == null) {
       return hasError
           ? Center(child: Text("Failed to load image", style: context.theme.textTheme.bodyLarge))
           : Center(child: buildProgressIndicator(context));
@@ -135,9 +143,9 @@ class _FullscreenImageState extends State<FullscreenImage>
       minScale: PhotoViewComputedScale.contained,
       maxScale: PhotoViewComputedScale.contained * 10,
       controller: controller,
-      imageProvider: bytes != null
+      imageProvider: stickerPreviewProvider ?? (bytes != null
           ? LoopingMemoryImage(bytes!) as ImageProvider
-          : LoopingFileImage(File(compatiblePath ?? file.path!)),
+          : LoopingFileImage(File(compatiblePath ?? file.path!))),
       loadingBuilder: (BuildContext context, ImageChunkEvent? ev) {
         return Center(child: buildProgressIndicator(context));
       },
@@ -151,7 +159,7 @@ class _FullscreenImageState extends State<FullscreenImage>
         }
       },
       errorBuilder: (context, object, stacktrace) =>
-          Center(child: Text("Failed to display image", style: context.theme.textTheme.bodyLarge)),
+          stickerPreviewFailure ?? Center(child: Text("Failed to display image", style: context.theme.textTheme.bodyLarge)),
       filterQuality: FilterQuality.high,
     );
   }

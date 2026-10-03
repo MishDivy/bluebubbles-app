@@ -2,6 +2,11 @@ import 'package:bluebubbles/database/models.dart';
 import 'package:collection/collection.dart';
 
 class StickerHelper {
+  static bool requiresNativePreview(Attachment attachment) =>
+      (attachment.mimeType?.toLowerCase().contains('image/hei') == true ||
+       RegExp(r'\.(heic|heif|heics)$', caseSensitive: false).hasMatch(attachment.transferName ?? '')) &&
+      (attachment.metadata?['isSticker'] == true || attachment.metadata?['sticker'] is Map ||
+       attachment.message.target?.isSticker == true);
   static bool isUnconfirmedTargetedEvent(Message message) => message.metadata?['nativeStickerTargetSend'] == true &&
       (message.guid?.startsWith('temp') == true || message.guid?.startsWith('error') == true || message.error != 0);
 

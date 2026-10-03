@@ -1,9 +1,11 @@
 import 'dart:math';
 import 'dart:io';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 
 import 'package:bluebubbles/app/components/image_blur_canvas.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/live_photo_mixin.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/looping_image.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/sticker_asset_image.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/attachment/parts/media_unavailable_placeholder.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/database/models.dart';
@@ -58,7 +60,7 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
     // Migration path for attachments processed before orientation tracking
     // was added: opportunistically reprocess once, only for attachments
     // actually scrolled into view (never a bulk startup scan).
-    if (!kIsWeb && file.path != null && attachment.metadata?['_orientation_processed'] != true) {
+    if (!StickerHelper.requiresNativePreview(attachment) && !kIsWeb && file.path != null && attachment.metadata?['_orientation_processed'] != true) {
       AttachmentsSvc.loadImageProperties(attachment, actualPath: file.path).then((_) {
         if (mounted) setState(() {});
       });
@@ -92,6 +94,10 @@ class _ImageViewerState extends State<ImageViewer> with AutomaticKeepAliveClient
     // Handle demo attachments
     if (attachment.guid!.contains("demo")) {
       return Image.asset(attachment.transferName!, fit: BoxFit.cover);
+    }
+    if (StickerHelper.requiresNativePreview(attachment)) {
+      final size = widget.isInReply ? attachment.displayBox(100, 100) : _displaySize(context);
+      return SizedBox(width: size.width, height: size.height, child: StickerAssetImage(attachment: attachment));
     }
 
     // In reply context use a compact blur canvas instead of the full viewer.

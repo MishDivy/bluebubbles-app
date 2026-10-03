@@ -50,3 +50,9 @@ Their image-cache keys are distinct from the standard providers, whose finite
 animations may already have completed. Static originals still render one frame.
 Reply previews keep their existing playback behavior, as does desktop GIF
 Reduce Motion (paused until hovered).
+
+Native HEIC/HEICS stickers use authenticated transparent PNG/APNG display previews through
+`StickerAssetImage` in inline, placement, tapback and fullscreen contexts. Its controller owns a
+coalesced request consumer and uses origin/GUID widget identity. Unsupported previews show an
+explicit original-retained fallback with intentional Retry; they never use JPEG, static conversion
+or a legacy converted sibling. Successful previews keep the existing looping image provider.

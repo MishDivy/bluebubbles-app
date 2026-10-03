@@ -18,6 +18,12 @@ placement and sticker tapbacks. A passing build does not complete the feature.
 The acceptance table below tracks the remaining device checks. Experimental
 capabilities stay separate from the production helper and from delivery evidence.
 
+The current milestone is a polished candidate and progress review, not full
+parity. The owner deferred placement and exact sizing on 2026-10-03. Existing
+experimental placement code stays on the feature branch; it is not accepted
+for production. Finish the current checks and Android build, then review the
+usable scope and device-test plan before further implementation or deployment.
+
 | Behavior | Evidence required before enabling or merging |
 | --- | --- |
 | Folder browser with separate pack subfolders | Samsung folder grant, restart, revoked grant, cancellation and large-folder tests |
@@ -25,9 +31,10 @@ capabilities stay separate from the production helper and from delivery evidence
 | Animated standalone sticker | Original bytes remain animated and transparent on both clients, including finite-loop APNG |
 | Multiple stickers in a horizontal row | Observe an iPad-created row's message/attachment structure; reproduce separate sticker identities and order without a flattened image |
 | Sticker placed on an existing message | Verify target GUID, part, coordinates, scale and rotation against an iPad fixture; never substitute a threaded reply |
+| Move or resize an existing placement | Observe its native update event and preserve the placement identity; sending another sticker is not an edit |
 | Multiple placements by the same sender | Both remain visible; placement is not a sender's single tapback slot |
 | Sticker tapback add, replace and remove | Verify native constructor, asset association and `2007`/`3007` events; do not reuse Unicode-emoji sending |
-| Placement deletion | Observe the actual deletion event; `3007` does not establish how a `1000` placement is removed |
+| Placement deletion | Match the device-local Sticker Details action and persist local hiding; `3007` must not remove a `1000` placement |
 | Source pack, accessibility label and effects | Preserve fields supported by real source metadata; do not invent an App Store pack identity or discard effect-bearing originals |
 | Live, history and reconnect rendering | Same target, size, position, assets and removal state after leaving the chat and restarting each client |
 | Notifications and previews | Useful text or a safe placeholder; no `null`, private payload logging or broken asset lookup |
@@ -107,8 +114,16 @@ Unknown effects, untimed multi-image files and unsupported auxiliary planes
 return an explicit unavailable result. The narrow static HEIC raster exception
 and its limits are documented in the server's
 `packages/server/native/sticker-preview/README.md`. A derived raster does not
-establish fidelity for an unknown effect. Android integration and paired-device
-acceptance remain separate gates.
+establish fidelity for an unknown effect.
+
+Android uses these previews for native HEIC stickers inline, in placements and
+tapbacks, and in the fullscreen viewer. The existing looping image providers
+handle animation. Preview requests and the memory cache are bounded, share work
+between visible consumers, and separate server origins and transfer GUIDs.
+Unsupported previews show an explicit Retry action; they never fall back to a
+flattened JPEG or static conversion. Save and Share retain the original file,
+including when a legacy converted sibling exists. Synthetic tests cover these
+paths; paired-device acceptance remains required.
 
 The Mac artifact workflow defaults to the stable helper. Its explicit
 `native_stickers` input selects the pinned experimental helper and includes the
@@ -160,6 +175,11 @@ attachments, each at part 0 with the emoji-image attribute. Multiple placements
 use independent type-1000 messages. Removing placements on the iPad did not
 establish a remote deletion event. Android therefore treats hiding a placement
 as device-local and keeps that action separate from removing a sticker tapback.
+This agrees with [Apple's iPad guide](https://support.apple.com/guide/ipad/send-stickers-ipaddca01563/ipados),
+which describes Sticker Details deletion as local to that iPad. The same guide
+also documents moving and resizing a previously placed sticker. That update
+path needs its own native observation and implementation; a new placement does
+not establish support for editing an existing one.
 
 A sticker selected through the iPad reaction picker also arrived as type `1000`,
 with `sir=true` in its sticker metadata. It is an independent reaction-layout

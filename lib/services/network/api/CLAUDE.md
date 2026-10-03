@@ -34,4 +34,8 @@ One file per server API domain. Each class implements `BaseApi` and is exposed o
   Placement geometry is finite numeric JSON; uploads preserve source bytes. Removal is JSON with
   the current own reaction GUID and no new upload.
 - Full method-level reference table: `../CLAUDE.md`
+- `AttachmentApi.stickerPreview` requests only the authenticated display endpoint. It owns streamed
+  error cleanup and a total deadline capped at 60 seconds. The response must be PNG/APNG with matching
+  format/frame/dimension headers, at most 16 MiB, 618 pixels per axis, 100 frames and 25 million
+  decoded canvas pixels. Validation precedes image decoding; source download behavior is unchanged.
 - HTTP conventions (`runApiGuarded`, `buildQueryParams`, error handling): `.claude/rules/api.md`

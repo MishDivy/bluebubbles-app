@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
+import 'package:bluebubbles/services/ui/sticker_preview_cache.dart';
 
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/backend/interfaces/image_interface.dart';
@@ -39,11 +41,13 @@ class AttachmentWithProgress {
 }
 
 class AttachmentsService extends GetxService {
+  final stickerPreviews = StickerPreviewCache();
   /// The already-converted sibling of [basePath], if one is on disk. Checks the
   /// current format first, then the legacy `.png` older builds wrote for HEIC —
   /// those files decode fine, so there's no reason to reconvert.
   /// Null means nothing has been converted yet.
   String? _existingConvertedPath(Attachment attachment, String basePath) {
+    if (StickerHelper.requiresNativePreview(attachment)) return null;
     for (final candidate in {"$basePath.${attachment.convertedExtension}", "$basePath.png"}) {
       if (File(candidate).existsSync()) return candidate;
     }
@@ -559,6 +563,7 @@ class AttachmentsService extends GetxService {
   /// Also extracts image dimensions and metadata lazily.
   /// Returns the path to use (converted or original), or null if conversion failed.
   Future<String?> ensureImageCompatibility(Attachment attachment, {String? actualPath}) async {
+    if (StickerHelper.requiresNativePreview(attachment)) return null;
     if (kIsWeb || attachment.mimeType == null || attachment.mimeStart != "image") {
       return actualPath ?? attachment.path;
     }
