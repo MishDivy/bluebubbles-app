@@ -220,6 +220,51 @@ class MessageApi {
     });
   }
 
+  /// Checks the connected helper instead of trusting the isolate's cached details.
+  Future<bool> supportsStickerSending({CancelToken? cancelToken}) async {
+    final info = await _svc.runApiGuarded(() async {
+      final response = await _svc.dio.get(
+        '${_svc.apiRoot}/server/info',
+        queryParameters: _svc.buildQueryParams(),
+        cancelToken: cancelToken,
+      );
+      return _svc.returnSuccessOrError(response);
+    });
+    final data = info.data is Map ? info.data['data'] : null;
+    final capabilities = data is Map ? data['privateApiCapabilities'] : null;
+    return capabilities is Map && capabilities['stickerSending'] == true;
+  }
+
+  /// Sends original sticker bytes once. An ambiguous response must not resend.
+  Future<Response> sendSticker(
+    String chatGuid,
+    String tempGuid,
+    PlatformFile file, {
+    String? stickerLabel,
+    CancelToken? cancelToken,
+  }) async {
+    return _svc.runApiGuarded(() async {
+      if (!await supportsStickerSending(cancelToken: cancelToken)) {
+        throw UnsupportedError('The connected server helper has not enabled native sticker sending.');
+      }
+      final form = FormData.fromMap({
+        'attachment': await MultipartFile.fromFile(file.path!, filename: file.name),
+        'chatGuid': chatGuid,
+        'tempGuid': tempGuid,
+        'name': file.name,
+        'stickerLabel': ?stickerLabel,
+      });
+      final response = await _svc.dio.post(
+        '${_svc.apiRoot}/message/send-sticker',
+        queryParameters: _svc.buildQueryParams(),
+        data: form,
+        cancelToken: cancelToken,
+        options: Options(headers: _svc.headers),
+      );
+      return _svc.returnSuccessOrError(response);
+    }, retryOn502: false);
+  }
+
   /// Send a multipart message. [chatGuid] specifies the chat, [tempGuid] specifies a
   /// temporary guid to avoid duplicate messages being sent, [parts] is the list
   /// of message parts.

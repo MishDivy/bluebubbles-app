@@ -5,6 +5,7 @@ import 'package:bluebubbles/app/state/attachment_state.dart';
 import 'package:bluebubbles/app/state/message_state.dart';
 import 'package:bluebubbles/helpers/types/extensions/extensions.dart';
 import 'package:bluebubbles/helpers/types/constants.dart';
+import 'package:bluebubbles/helpers/ui/ui_helpers.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:bluebubbles/services/backend/interfaces/sync_interface.dart';
@@ -1117,6 +1118,11 @@ class MessagesService extends GetxController {
 
   /// Generates new temp GUID, clears error state, and updates both DB and MessageState
   Future<void> retryFailedMessage(Message message, {String? oldGuid}) async {
+    if (message.dbAttachments.any((a) => a.metadata?['nativeStickerSend'] == true)) {
+      showSnackbar('Check before resending sticker',
+          'If the attempt timed out, check Messages on your Mac. To send again, select the sticker from its folder.');
+      return;
+    }
     final guidToDelete = oldGuid ?? message.guid!;
 
     // Generate new temp GUID for retry

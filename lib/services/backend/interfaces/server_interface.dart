@@ -37,6 +37,7 @@ class ServerInterface {
       serverVersion: response['serverVersion'] as String,
       serverVersionCode: response['serverVersionCode'] as int,
       customEmojiReactions: response['customEmojiReactions'] == true,
+      stickerSending: response['stickerSending'] == true,
     );
   }
 }

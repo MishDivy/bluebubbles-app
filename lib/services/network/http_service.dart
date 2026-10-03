@@ -77,7 +77,8 @@ class HttpService implements BaseApi {
   }
 
   @override
-  Future<Response> runApiGuarded(Future<Response> Function() func, {bool checkOrigin = true}) async {
+  Future<Response> runApiGuarded(Future<Response> Function() func,
+      {bool checkOrigin = true, bool retryOn502 = true}) async {
     if (HttpSvc.origin.isEmpty && checkOrigin) {
       return Future.error("No server URL!");
     }
@@ -95,7 +96,7 @@ class HttpService implements BaseApi {
           : e is DioException
               ? e.response?.statusCode
               : null;
-      if (statusCode == 502 && apiRoot.contains("trycloudflare")) {
+      if (retryOn502 && statusCode == 502 && apiRoot.contains("trycloudflare")) {
         try {
           return await func();
         } catch (e, s) {

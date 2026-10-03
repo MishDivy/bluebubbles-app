@@ -27,5 +27,6 @@ One file per server API domain. Each class implements `BaseApi` and is exposed o
 3. Never add request methods directly to `HttpService` — see `../CLAUDE.md` and `.claude/rules/api.md`.
 
 ## Related
+- `MessageApi.sendSticker` uploads only standalone sticker fields to `/message/send-sticker` after a live explicit helper capability check. It disables the generic 502 retry to avoid duplicate sends when the delivery outcome is unknown.
 - Full method-level reference table: `../CLAUDE.md`
 - HTTP conventions (`runApiGuarded`, `buildQueryParams`, error handling): `.claude/rules/api.md`

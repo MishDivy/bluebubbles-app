@@ -24,11 +24,12 @@ source. The app keeps its existing package ID, display name and signing identity
 CI builds an unsigned ARM64 release APK and uploads it with `candidate.json` and
 `SHA256SUMS`. It runs on `main` and `feature/custom-reactions` and records the
 source commit and CI run. The scoped `fix/sticker-previews` branch also runs these
-checks and can upload unsigned candidates. Its default build number is the workflow run number;
+checks and can upload unsigned candidates. `feature/native-stickers` has the same unsigned
+candidate checks. The default build number is the workflow run number;
 manual dispatch can supply a positive override. Reserve published version codes so later candidates
 stay above the installed version. Pull request jobs build and verify but do not
 upload candidates. The workflow has no signing credentials and does not publish
-releases or install apps. Artifact uploads require this fork, one of those three
+releases or install apps. Artifact uploads require this fork, one of those four
 branches and a non-PR run. GitHub manual dispatch requires the workflow file on
 the repository's default branch; feature-branch pushes work independently.
 

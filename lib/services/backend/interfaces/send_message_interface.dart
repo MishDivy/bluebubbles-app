@@ -9,6 +9,26 @@ import 'package:get_it/get_it.dart';
 /// in-flight sends survive the app being backgrounded.  When already running
 /// inside the isolate, calls the action directly.
 class SendMessageInterface {
+  static Future<Map<String, dynamic>> sendSticker({
+    required String chatGuid,
+    required String tempGuid,
+    required String filePath,
+    required String fileName,
+    required int fileSize,
+    String? stickerLabel,
+  }) async {
+    final data = {
+      'chatGuid': chatGuid,
+      'tempGuid': tempGuid,
+      'filePath': filePath,
+      'fileName': fileName,
+      'fileSize': fileSize,
+      'stickerLabel': stickerLabel,
+    };
+    if (isIsolate) return SendMessageActions.sendSticker(data);
+    return GetIt.I<GlobalIsolate>().send<Map<String, dynamic>>(IsolateRequestType.sendSticker, input: data);
+  }
+
   /// Sends a text message and returns the decoded server response body.
   static Future<Map<String, dynamic>> sendTextMessage({
     required String chatGuid,

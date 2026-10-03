@@ -3,6 +3,11 @@
 ## File
 `filesystem_service.dart` — `FilesystemService` (registered with GetIt via `FileSystemSvc` shorthand)
 
+`sticker_folder_service.dart` is a stateless Android SAF channel facade. It lists bounded pages,
+reads visible sticker thumbnails, and stages only the explicitly selected original file before
+queuing its attachment. Native intent and original-byte preservation live in existing attachment
+metadata. Folder access belongs to the native persisted read grant, not a filesystem path.
+
 ## Responsibilities
 - Resolves platform-specific paths for attachments, cache, and temp files
 - Manages attachment download destinations (per-GUID subdirectories)

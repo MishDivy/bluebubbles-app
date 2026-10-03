@@ -72,6 +72,7 @@ class OutgoingReaction extends OutgoingQueueItem {
 
 class OutgoingAttachment extends OutgoingQueueItem {
   Attachment attachment;
+  bool get isNativeSticker => attachment.metadata?['nativeStickerSend'] == true;
   bool isAudioMessage;
   @override
   bool isRetry;

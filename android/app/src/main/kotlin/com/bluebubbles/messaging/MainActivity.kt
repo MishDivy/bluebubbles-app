@@ -12,8 +12,11 @@ import com.google.firebase.firestore.FirebaseFirestoreException
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import com.bluebubbles.messaging.services.filesystem.StickerFolderAccess
 
 class MainActivity : FlutterFragmentActivity() {
+    private var stickerFolderAccess: StickerFolderAccess? = null
+    private var stickerFolderChannel: MethodChannel? = null
     companion object {
         private val engineLock = Any()
         @Volatile private var _engine: FlutterEngine? = null
@@ -61,6 +64,14 @@ class MainActivity : FlutterFragmentActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         setEngine(flutterEngine, this)
         super.configureFlutterEngine(flutterEngine)
+        stickerFolderAccess?.close()
+        stickerFolderAccess = StickerFolderAccess(this)
+        stickerFolderChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, StickerFolderAccess.CHANNEL)
+        stickerFolderChannel?.setMethodCallHandler { call, result ->
+            val access = stickerFolderAccess
+            if (access == null) result.error("closed", "Sticker folder browser closed.", null)
+            else access.handle(call, result)
+        }
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, Constants.methodChannel).setMethodCallHandler {
             call, result -> MethodCallHandler().methodCallHandler(call, result, this)
         }
@@ -102,6 +113,10 @@ class MainActivity : FlutterFragmentActivity() {
     }
 
     override fun onDestroy() {
+        stickerFolderAccess?.close()
+        stickerFolderChannel?.setMethodCallHandler(null)
+        stickerFolderChannel = null
+        stickerFolderAccess = null
         PersistentLog.d(this, Constants.logTag, "BlueBubbles MainActivity is being destroyed")
         MethodCallHandler.clearNotificationListenerResult()
         setEngine(null, this)
@@ -137,6 +152,9 @@ class MainActivity : FlutterFragmentActivity() {
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == StickerFolderAccess.REQUEST_CODE) {
+            stickerFolderAccess?.onActivityResult(resultCode, data)
+        }
         if (requestCode == Constants.notificationListenerRequestCode) {
             MethodCallHandler.consumeNotificationListenerResult()?.success(resultCode == Activity.RESULT_OK)
         }

@@ -37,3 +37,7 @@ One instance per chat GUID. Accessed via `MessagesSvc(chatGuid)`.
 - For bulk initial load, use `addMessages()` which skips per-field update overhead
 
 **For the full update flow**, see `docs/MESSAGE_RECEIVE_FLOW.md`.
+
+`retryFailedMessage` checks persisted native sticker metadata before any GUID or DB mutation.
+Native failures require checking the previous outcome and selecting the sticker again;
+ordinary sends keep their existing retry behavior.

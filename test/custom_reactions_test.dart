@@ -318,7 +318,8 @@ class _OfflineApi implements BaseApi {
   @override
   Map<String, dynamic> buildQueryParams([Map<String, dynamic> params = const {}]) => params;
   @override
-  Future<Response> runApiGuarded(Future<Response> Function() func, {bool checkOrigin = true}) => func();
+  Future<Response> runApiGuarded(Future<Response> Function() func, {bool checkOrigin = true, bool retryOn502 = true}) =>
+      func();
   @override
   Future<Response> returnSuccessOrError(Response response) async => response;
 }

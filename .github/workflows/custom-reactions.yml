@@ -2,7 +2,7 @@ name: Custom reaction checks
 
 on:
   push:
-    branches: [main, feature/custom-reactions, fix/sticker-previews]
+    branches: [main, feature/custom-reactions, fix/sticker-previews, feature/native-stickers]
   pull_request:
     paths:
       - 'lib/**'

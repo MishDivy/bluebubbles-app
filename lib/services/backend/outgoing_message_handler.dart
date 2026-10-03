@@ -184,6 +184,9 @@ class OutgoingMessageHandler {
   /// [OutgoingQueueItem.completer] resolves — i.e. when the HTTP response arrives
   /// or an error is surfaced.
   Future<void> queue(OutgoingQueueItem item) async {
+    if (item is OutgoingAttachment && item.isNativeSticker && item.isRetry) {
+      throw UnsupportedError('Native sticker sends require checking the previous outcome before sending again.');
+    }
     // Every item must have a stable temp GUID before prep/retry begins — see
     // [_ensureTempGuid]. Centralized here so individual UI call sites can't
     // forget it (several did, historically — that's what caused this to be
@@ -641,7 +644,7 @@ class OutgoingMessageHandler {
       final destinationFile = await File(destinationPath).create(recursive: true);
 
       if (sourcePath != null) {
-        if (attachment.mimeType == 'image/gif') {
+        if (attachment.mimeType == 'image/gif' && attachment.metadata?['preserveOriginalBytes'] != true) {
           final bytes = await File(sourcePath).readAsBytes();
           final optimizedBytes = await fixSpeedyGifs(bytes);
           await destinationFile.writeAsBytes(optimizedBytes);
@@ -660,7 +663,7 @@ class OutgoingMessageHandler {
         }
       } else {
         Uint8List bytesToWrite = attachment.bytes!;
-        if (attachment.mimeType == 'image/gif') {
+        if (attachment.mimeType == 'image/gif' && attachment.metadata?['preserveOriginalBytes'] != true) {
           bytesToWrite = await fixSpeedyGifs(bytesToWrite);
         }
         await destinationFile.writeAsBytes(bytesToWrite);
@@ -883,7 +886,16 @@ class OutgoingMessageHandler {
     return _sendWithRace(
       tempGuid: tempGuid,
       chat: c,
-      httpCall: () => SendMessageInterface.sendAttachmentMessage(
+      httpCall: () => attachment.metadata?['nativeStickerSend'] == true
+          ? SendMessageInterface.sendSticker(
+              chatGuid: c.guid,
+              tempGuid: tempGuid,
+              filePath: attachment.path,
+              fileName: attachment.transferName!,
+              fileSize: attachment.totalBytes ?? 0,
+              stickerLabel: attachment.metadata?['stickerLabel'] as String?,
+            )
+          : SendMessageInterface.sendAttachmentMessage(
         chatGuid: c.guid,
         tempGuid: attachment.guid!,
         filePath: attachment.path,

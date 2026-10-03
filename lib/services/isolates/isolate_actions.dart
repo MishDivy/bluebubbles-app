@@ -124,6 +124,7 @@ class IsolateActons {
     IsolateRequestType.sendTapback: SendMessageActions.sendTapback,
     IsolateRequestType.sendMultipartMessage: SendMessageActions.sendMultipartMessage,
     IsolateRequestType.sendAttachmentMessage: SendMessageActions.sendAttachmentMessage,
+    IsolateRequestType.sendSticker: SendMessageActions.sendSticker,
 
     // CustomGroup
     IsolateRequestType.getAllCustomGroups: CustomGroupActions.getAllIds,

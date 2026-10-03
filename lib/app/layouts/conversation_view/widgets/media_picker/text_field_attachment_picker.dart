@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/sticker_browser.dart';
 
 import 'package:bluebubbles/app/layouts/conversation_details/dialogs/timeframe_picker.dart';
 import 'package:bluebubbles/utils/logger/logger.dart';
@@ -208,6 +209,13 @@ class _AttachmentPickerState extends State<AttachmentPicker> with ThemeHelpers {
             padding: EdgeInsets.zero,
             physics: const BouncingScrollPhysics(),
             children: [
+              if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+                _QuickActionItem(
+                  icon: Icons.emoji_emotions_outlined,
+                  label: 'Stickers',
+                  color: context.theme.colorScheme.primary,
+                  onTap: () => NavigationSvc.push(context, StickerBrowser(chat: controller.chat)),
+                ),
               _QuickActionItem(
                 icon: Icons.camera_alt_rounded,
                 label: 'Photo',
