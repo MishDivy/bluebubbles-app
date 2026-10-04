@@ -1,8 +1,16 @@
 import 'dart:math';
 
+import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
+
+Widget clipMessagePartContent({required MessagePart part, required TailClipper clipper, required Widget child}) {
+  if (part.isInlineSticker && part.text?.isNotEmpty != true && part.subject?.isNotEmpty != true) {
+    return child;
+  }
+  return ClipPath(clipper: clipper, child: child);
+}
 
 class TailClipper extends CustomClipper<Path> {
   final bool isFromMe;

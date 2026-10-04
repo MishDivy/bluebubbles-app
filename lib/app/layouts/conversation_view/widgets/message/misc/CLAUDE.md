@@ -16,6 +16,9 @@ Shared utilities that don't belong to a single message type. The most important 
 | `select_checkbox.dart` | Selection-mode checkbox (left side for received, right for sent) |
 | `message_edit_field.dart` | Inline edit `TextField` with confirm / cancel actions |
 
+`clipMessagePartContent` keeps sticker-only inline parts outside the bubble clip. Parts with
+text or a subject retain ordinary bubble clipping, including mixed text/sticker parts.
+
 ## Central Dispatcher: `MessagePartContent`
 
 ```dart

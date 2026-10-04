@@ -563,7 +563,8 @@ class _MessageHolderState extends State<MessageHolder> with AutomaticKeepAliveCl
                                                                             ],
                                                                           );
                                                                           if (isGallery) return inner;
-                                                                          return ClipPath(
+                                                                          return clipMessagePartContent(
+                                                                            part: e,
                                                                             clipper: TailClipper(
                                                                               isFromMe: message.isFromMe!,
                                                                               showTail: !e.isPkPass &&
