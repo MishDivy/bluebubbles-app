@@ -24,6 +24,7 @@ import 'package:scroll_to_index/scroll_to_index.dart';
 
 import 'handlers/drop_zone_manager.dart';
 import 'handlers/message_animation_orchestrator.dart';
+import 'handlers/message_list_updates.dart';
 import 'handlers/smart_replies_manager.dart';
 
 class MessagesView extends StatefulWidget {
@@ -510,10 +511,17 @@ class MessagesViewState extends State<MessagesView> with MessagesServiceMixin, T
     if (!mounted) return;
 
     Logger.debug("handleUpdatedMessage: Updating message ${oldGuid ?? message.guid}");
-    final index = _messages.indexWhere((e) => e.guid == (oldGuid ?? message.guid));
-    if (index != -1) {
-      _messages[index] = message;
-      Logger.debug("handleUpdatedMessage: Updated message at index $index");
+    final update = updateVisibleMessage(_messages, message, oldGuid: oldGuid);
+    if (update.updated) {
+      if (update.removedIndex != null) {
+        _listKey.currentState?.removeItem(
+          update.removedIndex!,
+          (_, _) => const SizedBox.shrink(),
+          duration: Duration.zero,
+        );
+        _messageKeys.remove(oldGuid);
+        _listVersion.value++;
+      }
     } else {
       Logger.warn("handleUpdatedMessage: Message ${oldGuid ?? message.guid} not found in list");
     }

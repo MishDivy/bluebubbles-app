@@ -13,6 +13,7 @@ Two entry-point widgets for the conversation screen.
 Extracted orchestration logic used by `messages_view.dart` / `conversation_view.dart`:
 - `drop_zone_manager.dart` — desktop drag-and-drop file target handling
 - `message_animation_orchestrator.dart` — coordinates entrance/highlight animations for messages in the list
+- `message_list_updates.dart`: applies visible updates and coalesces exact confirmed GUID-swap collisions
 - `message_list_animation_config.dart` — animation timing/curve constants for the message list
 - `smart_replies_manager.dart` — fetches and manages Smart Reply suggestion state
 
