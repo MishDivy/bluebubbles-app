@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/backend/outgoing_message_handler.dart';
 import 'package:flutter/services.dart';
@@ -32,6 +33,46 @@ class StickerFolderService {
   static const maxBytes = 500 * 1024;
   final MethodChannel channel;
   const StickerFolderService({this.channel = const MethodChannel('com.bluebubbles.messaging/sticker-folder')});
+
+  static void requireStaticCompositionPng(Uint8List bytes) {
+    const signature = [137, 80, 78, 71, 13, 10, 26, 10];
+    if (bytes.length < 8 || bytes.length > maxBytes ||
+        List.generate(8, (index) => index).any((index) => bytes[index] != signature[index])) {
+      throw UnsupportedError('Rows and text with stickers currently support static PNG only. Your selection is still here.');
+    }
+    final data = ByteData.sublistView(bytes);
+    var offset = 8;
+    var first = true;
+    var hasImage = false;
+    while (offset + 12 <= bytes.length) {
+      final length = data.getUint32(offset);
+      if (length > bytes.length - offset - 12) break;
+      final type = String.fromCharCodes(bytes.sublist(offset + 4, offset + 8));
+      if (type == 'acTL' || type == 'fcTL' || type == 'fdAT') {
+        throw UnsupportedError('Animated stickers are not supported in rows or with text yet. Your selection is still here.');
+      }
+      if (first && (type != 'IHDR' || length != 13)) break;
+      first = false;
+      if (type == 'IDAT') hasImage = true;
+      offset += length + 12;
+      if (type == 'IEND') {
+        if (length == 0 && hasImage && offset == bytes.length) return;
+        break;
+      }
+    }
+    throw StateError('This PNG sticker is incomplete. Choose another sticker. Your draft is still here.');
+  }
+
+  Future<void> _checkStaticPng(PlatformFile file) async {
+    final bytes = BytesBuilder(copy: false);
+    await for (final chunk in File(file.path!).openRead()) {
+      if (bytes.length + chunk.length > maxBytes) {
+        throw StateError('This sticker exceeds 500 KiB. Your selection is still here.');
+      }
+      bytes.add(chunk);
+    }
+    requireStaticCompositionPng(bytes.takeBytes());
+  }
 
   Future<String?> currentFolder() => channel.invokeMethod<String>('get-folder');
   Future<String?> chooseFolder() => channel.invokeMethod<String>('choose-folder');
@@ -96,6 +137,7 @@ class StickerFolderService {
       for (final entry in entries) {
         final data = (await channel.invokeMapMethod<String, dynamic>('stage-sticker', {'uri': entry.uri}))!;
         staged.add(PlatformFile(path: data['path'] as String, name: data['name'] as String, size: data['size'] as int));
+        await _checkStaticPng(staged.last);
       }
       final message = Message(text: '', dateCreated: DateTime.now(), hasAttachments: true, isFromMe: true, handleId: 0);
       await OutgoingMsgHandler.queue(OutgoingStickerRow(chat: chat, message: message,
@@ -106,6 +148,47 @@ class StickerFolderService {
           await File(file.path!).delete();
         } on FileSystemException {
           // Later selections clean abandoned files from this feature's cache.
+        }
+      }
+    }
+  }
+
+  Future<void> sendComposition(Chat chat, List<StickerFolderEntry> entries, String text,
+      String serverIdentity, {required bool Function() canQueue}) async {
+    final staged = <PlatformFile>[];
+    final standalone = entries.length == 1 && text == '\uFFFC';
+    try {
+      for (final entry in entries) {
+        if (!canQueue()) throw StateError('The conversation or server changed. Your draft is still here.');
+        final data = (await channel.invokeMapMethod<String, dynamic>('stage-sticker', {'uri': entry.uri}))!;
+        staged.add(PlatformFile(path: data['path'] as String, name: data['name'] as String, size: data['size'] as int));
+        if (!standalone) await _checkStaticPng(staged.last);
+      }
+      if (!canQueue()) throw StateError('The conversation or server changed. Your draft is still here.');
+      final message = Message(text: standalone ? '' : text, dateCreated: DateTime.now(),
+        hasAttachments: true, isFromMe: true, handleId: 0,
+        metadata: standalone ? {'nativeStickerOrigin': serverIdentity} : null);
+      message.generateTempGuid();
+      if (!standalone && utf8.encode('${chat.guid}${message.guid}${jsonEncode([
+        for (final file in staged) {'name': file.name},
+      ])}$text').length > 8192) {
+        throw StateError('The sticker draft is too large. Shorten the text or filenames. Your draft is still here.');
+      }
+      if (standalone) {
+        final attachment = buildAttachment(staged.single, nativeSticker: true);
+        attachment.metadata = {...?attachment.metadata, 'nativeStickerOrigin': serverIdentity};
+        await OutgoingMsgHandler.queue(OutgoingAttachment(chat: chat, message: message, attachment: attachment));
+      } else {
+        await OutgoingMsgHandler.queue(OutgoingStickerRow(chat: chat, message: message,
+          attachments: staged.map((file) => buildAttachment(file, nativeSticker: false)).toList(),
+          compositionText: text, serverIdentity: serverIdentity));
+      }
+    } finally {
+      for (final file in staged) {
+        try {
+          await File(file.path!).delete();
+        } on FileSystemException {
+          // Android also removes stale files from this feature's staging cache.
         }
       }
     }

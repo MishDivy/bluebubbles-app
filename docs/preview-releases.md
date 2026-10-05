@@ -105,6 +105,22 @@ them. Keep normal account setup and the official installation available.
 
 ## Downloads and updates
 
+### Native sticker composition candidate
+
+On `feature/native-stickers`, selecting artwork from the sticker browser inserts
+it at the cursor in the current draft. Send queues one immutable text/artwork
+snapshot. Drafts are saved by server and chat; unsupported input stays in the
+composer. A single sticker without text uses the existing native send path,
+including animation. Rows and text with stickers currently require static PNGs
+and the server's explicit composition capability. There is no automatic split,
+flattening or retry after an uncertain send.
+
+The draft and outgoing native body preserve text/sticker order. Samsung's
+mixed-message display still puts the text above the stickers; exact inline chat
+layout is not part of this candidate. Receiving native rows and animated
+multipart messages keeps the existing rendering paths. Native delivery and row
+layout need owner self-chat acceptance on the Mac and iPad before promotion.
+
 ### Sticker preview fix
 
 `fix/sticker-previews` keeps transparent and animated attachments on the native

@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/types/helpers/reaction_type.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 import 'package:bluebubbles/services/network/api/base_api.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:dio/dio.dart';
@@ -234,7 +235,7 @@ class MessageApi {
     final data = info.data is Map ? info.data['data'] : null;
     final capabilities = data is Map ? data['privateApiCapabilities'] : null;
     return {
-      for (final key in ['stickerSending', 'stickerRows', 'stickerPlacement', 'stickerReactions'])
+      for (final key in ['stickerSending', 'stickerRows', 'stickerPlacement', 'stickerReactions', 'stickerComposition'])
         key: capabilities is Map && capabilities[key] == true,
     };
   }
@@ -274,25 +275,53 @@ class MessageApi {
   }
 
   /// Uploads an ordered native row as one message, with one stable temp GUID.
-  Future<Response> sendStickerRow(String chatGuid, String tempGuid, List<PlatformFile> files,
-      {List<String?>? stickerLabels, CancelToken? cancelToken}) async {
-    if (files.length < 2 || files.length > 10) throw ArgumentError('A sticker row requires 2 to 10 stickers.');
+  Future<Response> sendStickerRow(
+    String chatGuid,
+    String tempGuid,
+    List<PlatformFile> files, {
+    List<String?>? stickerLabels,
+    String? text,
+    String? expectedOrigin,
+    CancelToken? cancelToken,
+  }) async {
+    if (text != null) {
+      StickerHelper.validateCompositionText(text, files.length);
+      if (expectedOrigin == null || expectedOrigin.isEmpty) {
+        throw ArgumentError('The sticker draft requires its server.');
+      }
+      if (files.any((file) => file.path == null || file.size < 1 || file.size > 500 * 1024) ||
+          files.fold<int>(0, (bytes, file) => bytes + file.size) > 5 * 1024 * 1024) {
+        throw ArgumentError('The sticker draft exceeds its upload limits.');
+      }
+    } else if (files.length < 2 || files.length > 10) {
+      throw ArgumentError('A sticker row requires 2 to 10 stickers.');
+    }
     if (stickerLabels != null && stickerLabels.length != files.length) {
       throw ArgumentError('Each sticker label must correspond to its file.');
     }
-    final origin = _svc.origin;
+    final origin = expectedOrigin ?? _svc.origin;
+    if (_svc.origin != origin) throw StateError('The server changed. Open the original chat to send this draft.');
+    final descriptors = jsonEncode([
+      for (var i = 0; i < files.length; i++) {'name': files[i].name, 'stickerLabel': ?stickerLabels?[i]},
+    ]);
+    if (text != null && utf8.encode('$chatGuid$tempGuid$descriptors$text').length > 8192) {
+      throw ArgumentError('The sticker draft is too large. Shorten the text or filenames.');
+    }
     return _svc.runApiGuarded(() async {
-      if ((await stickerCapabilities(cancelToken: cancelToken))['stickerRows'] != true) {
-        throw UnsupportedError('The connected server helper has not enabled native sticker rows.');
+      final capability = text == null ? 'stickerRows' : 'stickerComposition';
+      if ((await stickerCapabilities(cancelToken: cancelToken))[capability] != true) {
+        throw UnsupportedError(
+          text == null
+              ? 'The connected server helper has not enabled native sticker rows.'
+              : 'The connected server helper has not enabled text with stickers. Your draft is still here.',
+        );
       }
       if (_svc.origin != origin) throw StateError('The server changed. Choose the sticker row again.');
       final form = FormData.fromMap({
         'chatGuid': chatGuid,
         'tempGuid': tempGuid,
-        'stickers': jsonEncode([
-          for (var i = 0; i < files.length; i++)
-            {'name': files[i].name, 'stickerLabel': ?stickerLabels?[i]},
-        ]),
+        'stickers': descriptors,
+        'text': ?text,
         for (var i = 0; i < files.length; i++)
           'attachment$i': await MultipartFile.fromFile(files[i].path!, filename: files[i].name),
       });
@@ -300,6 +329,9 @@ class MessageApi {
       final response = await _svc.dio.post('${_svc.apiRoot}/message/send-sticker-row',
           queryParameters: _svc.buildQueryParams(), data: form, cancelToken: cancelToken,
           options: Options(headers: _svc.headers));
+      if (text != null && _svc.origin != origin) {
+        throw StateError('The server changed before sticker confirmation. Check Messages before sending again.');
+      }
       return _svc.returnSuccessOrError(response);
     }, retryOn502: false);
   }
@@ -310,9 +342,11 @@ class MessageApi {
     String tempGuid,
     PlatformFile file, {
     String? stickerLabel,
+    String? expectedOrigin,
     CancelToken? cancelToken,
   }) async {
-    final origin = _svc.origin;
+    final origin = expectedOrigin ?? _svc.origin;
+    if (_svc.origin != origin) throw StateError('The server changed. Open the original chat to send this draft.');
     return _svc.runApiGuarded(() async {
       if (!await supportsStickerSending(cancelToken: cancelToken)) {
         throw UnsupportedError('The connected server helper has not enabled native sticker sending.');
@@ -333,6 +367,9 @@ class MessageApi {
         cancelToken: cancelToken,
         options: Options(headers: _svc.headers),
       );
+      if (expectedOrigin != null && _svc.origin != origin) {
+        throw StateError('The server changed before sticker confirmation. Check Messages before sending again.');
+      }
       return _svc.returnSuccessOrError(response);
     }, retryOn502: false);
   }

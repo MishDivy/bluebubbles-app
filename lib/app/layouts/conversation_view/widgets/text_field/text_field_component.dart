@@ -8,6 +8,7 @@ import 'package:bluebubbles/app/layouts/conversation_view/dialogs/custom_mention
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/text_field_attachment_picker.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/picked_attachments_holder.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/reply_holder.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/sticker_composition_controller.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/text_field_suffix.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/helpers/helpers.dart';
@@ -271,13 +272,15 @@ class TextFieldComponentState extends State<TextFieldComponent> {
                     Obx(() {
                       final chatTitle =
                           chat == null ? null : (ChatsSvc.getChatState(chat!.guid)?.title.value ?? chat!.getTitle());
-                      return TextField(
+                      return ValueListenableBuilder<TextEditingValue>(valueListenable: txtController,
+                        builder: (context, value, child) => TextField(
                         textCapitalization: TextCapitalization.sentences,
                         focusNode: controller?.focusNode ?? focusNode,
                         autocorrect: true,
                         controller: txtController,
                         scrollPhysics: const CustomBouncingScrollPhysics(),
                         style: context.theme.extension<BubbleText>()!.bubbleText,
+                        strutStyle: txtController is StickerCompositionController ? txtController.composerStrut : null,
                         keyboardType: TextInputType.multiline,
                         maxLines: 14,
                         minLines: 1,
@@ -428,7 +431,7 @@ class TextFieldComponentState extends State<TextFieldComponent> {
                         },
                         contentInsertionConfiguration:
                             ContentInsertionConfiguration(onContentInserted: onContentCommit),
-                      );
+                      ));
                     }),
                   ],
                 ),

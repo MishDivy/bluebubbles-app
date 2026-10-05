@@ -26,6 +26,8 @@ class SendMessageActions {
       (map['files'] as List).map((file) => PlatformFile(
           name: file['name'] as String, path: file['path'] as String, size: file['size'] as int)).toList(),
       stickerLabels: (map['stickerLabels'] as List?)?.cast<String?>(),
+      text: map['text'] as String?,
+      expectedOrigin: map['expectedOrigin'] as String?,
     );
     return response.data as Map<String, dynamic>;
   }
@@ -37,6 +39,7 @@ class SendMessageActions {
       map['tempGuid'] as String,
       PlatformFile(name: map['fileName'] as String, path: map['filePath'] as String, size: map['fileSize'] as int),
       stickerLabel: map['stickerLabel'] as String?,
+      expectedOrigin: map['expectedOrigin'] as String?,
     );
     return response.data as Map<String, dynamic>;
   }

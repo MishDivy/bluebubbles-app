@@ -35,5 +35,10 @@ class SharedPreferencesDesktopActions {
 3. This is for **low-level bootstrap values only** (see `../CLAUDE.md`) — app settings (`Settings` class fields) go through `SettingsSvc` instead, not here.
 
 ## Related
+
+`PrefsSvc.messaging` stores sticker composer text, selection and typed SAF artwork atomically
+in one bounded JSON record per server identity and chat. Restore errors keep the raw record;
+debounce/disposal saves cannot overwrite it until explicit user discard.
+
 - Category helper access pattern (`PrefsSvc.desktop`, `PrefsSvc.theme`, etc.): `../CLAUDE.md`
 - `SharedPreferencesService` / `PrefsSvc`: `../shared_preferences_service.dart`

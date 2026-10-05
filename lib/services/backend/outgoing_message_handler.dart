@@ -189,6 +189,9 @@ class OutgoingMessageHandler {
         (item is OutgoingStickerRow && item.isRetry) || (item is OutgoingTargetedSticker && item.isRetry)) {
       throw UnsupportedError('Native sticker sends require checking the previous outcome before sending again.');
     }
+    if (item is OutgoingStickerRow && item.compositionText != null && HttpSvc.origin != item.serverIdentity) {
+      throw StateError('The server changed. Open the original chat to send this draft.');
+    }
     // Every item must have a stable temp GUID before prep/retry begins — see
     // [_ensureTempGuid]. Centralized here so individual UI call sites can't
     // forget it (several did, historically — that's what caused this to be
@@ -199,7 +202,13 @@ class OutgoingMessageHandler {
     // retrying a transient failure and surfacing a terminal one as a failed
     // message so it is never silently dropped. See [_prepItemWithRetry].
     final prep = await _prepItemWithRetry(item);
-    if (!prep.ok) return;
+    if (!prep.ok) {
+      if ((item is OutgoingStickerRow && item.compositionText != null) ||
+          (item is OutgoingAttachment && item.isNativeSticker && item.attachment.metadata?['nativeStickerOrigin'] != null)) {
+        throw StateError('The sticker draft could not be prepared. It has not been sent.');
+      }
+      return;
+    }
     final returned = prep.result;
 
     if (returned is List<Message>) {
@@ -554,7 +563,13 @@ class OutgoingMessageHandler {
         );
       case QueueType.sendStickerRow:
         final typed = item as OutgoingStickerRow;
-        return sendStickerRow(typed.chat, typed.message, typed.attachments);
+        return sendStickerRow(
+          typed.chat,
+          typed.message,
+          typed.attachments,
+          compositionText: typed.compositionText,
+          serverIdentity: typed.serverIdentity,
+        );
       case QueueType.sendTargetedSticker:
         return sendTargetedSticker(item as OutgoingTargetedSticker);
     }
@@ -946,6 +961,7 @@ class OutgoingMessageHandler {
               fileName: attachment.transferName!,
               fileSize: attachment.totalBytes ?? 0,
               stickerLabel: attachment.metadata?['stickerLabel'] as String?,
+              expectedOrigin: attachment.metadata?['nativeStickerOrigin'] as String?,
             )
           : SendMessageInterface.sendAttachmentMessage(
         chatGuid: c.guid,
@@ -1008,7 +1024,13 @@ class OutgoingMessageHandler {
 
   // ── Finalization helpers ─────────────────────────────────────────────────
 
-  Future<void> sendStickerRow(Chat c, Message m, List<Attachment> attachments) async {
+  Future<void> sendStickerRow(
+    Chat c,
+    Message m,
+    List<Attachment> attachments, {
+    String? compositionText,
+    String? serverIdentity,
+  }) async {
     final tempGuid = m.guid!;
     final tempAttachmentGuids = attachments.map((attachment) => attachment.guid!).toList();
     List<Attachment>? confirmedAttachments;
@@ -1016,6 +1038,9 @@ class OutgoingMessageHandler {
       tempGuid: tempGuid,
       chat: c,
       httpCall: () async {
+        if (compositionText != null && (serverIdentity == null || HttpSvc.origin != serverIdentity || !c.isIMessage)) {
+          throw StateError('The server or chat changed. Open the original chat to send this draft.');
+        }
         final response = await SendMessageInterface.sendStickerRow(
           chatGuid: c.guid,
           tempGuid: tempGuid,
@@ -1023,12 +1048,24 @@ class OutgoingMessageHandler {
             path: attachment.path, name: attachment.transferName!, size: attachment.totalBytes ?? 0,
           )).toList(),
           stickerLabels: attachments.map((attachment) => attachment.metadata?['stickerLabel'] as String?).toList(),
+          text: compositionText,
+          expectedOrigin: serverIdentity,
         );
-        confirmedAttachments = StickerHelper.confirmedRowAttachments(response['data'] as Map, attachments.length);
+        if (compositionText != null && HttpSvc.origin != serverIdentity) {
+          throw StateError('The server changed before sticker confirmation. Check Messages before sending again.');
+        }
+        confirmedAttachments = compositionText == null
+            ? StickerHelper.confirmedRowAttachments(response['data'] as Map, attachments.length)
+            : StickerHelper.confirmedCompositionAttachments(
+                response['data'] as Map,
+                compositionText,
+                attachments.length,
+              );
         return response;
       },
       onSuccess: (data) async {
         final confirmed = Message.fromMap(data['data']);
+        if (compositionText != null) confirmed.metadata = {...?confirmed.metadata, ...?m.metadata};
         for (var i = 0; i < confirmedAttachments!.length; i++) {
           final attachment = confirmedAttachments![i];
           await _matchAttachmentWithExisting(c, tempAttachmentGuids[i], attachment);

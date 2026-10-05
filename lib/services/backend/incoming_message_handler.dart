@@ -474,6 +474,30 @@ class IncomingMessageHandler {
     }
 
     Map<String, String>? attachmentGuids;
+    final nativeComposition = existing.metadata?['nativeStickerCompositionSend'] == true;
+    if (nativeComposition) {
+      // Only HTTP carries the server's verified composition hint and native ordered identifiers.
+      if (StickerHelper.awaitsCompositionHttp(existing)) {
+        Logger.warn('Deferring pending sticker composition echo to verified HTTP confirmation', tag: _tag);
+        return;
+      }
+      if (existing.metadata?['nativeStickerCompositionOrigin'] != HttpSvc.origin ||
+          existing.chat.target?.guid != payload.chat.guid) {
+        Logger.warn('Ignoring sticker composition echo from a different server or chat', tag: _tag);
+        return;
+      }
+      if (payload.attachments.isNotEmpty || tempGuid != null) {
+        try {
+          attachmentGuids = StickerHelper.compositionReplacementGuids(existing, m, payload.attachments);
+        } catch (_) {
+          Logger.warn('Ignoring incomplete sticker composition echo; retaining verified assets', tag: _tag);
+          return;
+        }
+      } else {
+        StickerHelper.retainCompositionReceiptBody(existing, m);
+      }
+      m.metadata = {...?m.metadata, ...?existing.metadata};
+    }
     final nativeTarget = existing.metadata?['nativeStickerTargetSend'] == true;
     final pendingTarget = existing.guid?.startsWith('temp') == true && nativeTarget;
     if (StickerHelper.shouldVerifyTargetedEcho(existing, tempGuid: tempGuid, hasAttachments: payload.attachments.isNotEmpty)) {
@@ -489,7 +513,8 @@ class IncomingMessageHandler {
       }
     }
     final existingRow = StickerHelper.rowAttachments(existing.dbAttachments.toList());
-    final nativeRow = existing.metadata?['nativeStickerRowSend'] == true || (existingRow?.length ?? 0) > 1;
+    final nativeRow =
+        !nativeComposition && (existing.metadata?['nativeStickerRowSend'] == true || (existingRow?.length ?? 0) > 1);
     final pendingRow = existing.guid?.startsWith('temp') == true && nativeRow;
     if (nativeRow && (pendingRow || payload.attachments.isNotEmpty)) {
       try {

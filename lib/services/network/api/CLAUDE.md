@@ -29,6 +29,12 @@ One file per server API domain. Each class implements `BaseApi` and is exposed o
 ## Related
 - `MessageApi.sendSticker` uploads only standalone sticker fields to `/message/send-sticker` after a live explicit helper capability check. It disables the generic 502 retry to avoid duplicate sends when the delivery outcome is unknown.
 - `sendStickerRow` posts ordered `stickers` JSON and `attachment0..N-1` to `/message/send-sticker-row`, independently gated by explicit `stickerRows`. It also disables automatic 502 resend.
+- Optional row `text` selects the independent `stickerComposition` capability and allows 1 to 10
+  assets. Text must be well-formed UTF-16, at most 4096 units, with exactly one U+FFFC per asset;
+  combined field values are at most 8192 UTF-8 bytes. Files retain the 500 KiB per-asset/5 MiB total
+  bounds. The immutable origin is checked before negotiation, before POST and after its response.
+  Standalone composer sends carry the same origin guard through `sendSticker` without changing
+  the standalone wire fields or enabling automatic retries.
 - `sendTargetedSticker` routes immutable placement/tapback/removal intents to their native endpoints,
   rechecks server identity and the operation's explicit live capability, and disables 502 resend.
   Placement geometry is finite numeric JSON; uploads preserve source bytes. Removal is JSON with

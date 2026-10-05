@@ -6,6 +6,7 @@ import 'package:bluebubbles/app/components/custom_text_editing_controllers.dart'
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/media_picker/text_field_attachment_picker.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/message/send_animation.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/conversation_text_field_local_controller.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/sticker_composition_controller.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/helpers/text_field_match_helper.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/text_field_component.dart';
 import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/text_field_emoji_picker_section.dart';
@@ -117,10 +118,13 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
     // clears both the text controller and the persisted draft before navigating, so
     // any non-empty value here would be a stale artifact on the CVC's chat object.
     if (controller.fromChatCreator) return;
+    final hasSavedStickerDraft = controller.restoreStickerDraft();
+    if (hasSavedStickerDraft && controller.stickerDraftError.value == null) return;
     // Read from ChatState — it is the source of truth and is always up-to-date,
     // even before the async DB write from a previous session has completed.
     final incomingText = text ?? ChatsSvc.getChatState(chatGuid)?.textFieldText.value ?? chat.textFieldText;
-    if (incomingText != null && incomingText.isNotEmpty && incomingText != controller.textController.text) {
+    if (incomingText != null && incomingText.isNotEmpty && incomingText != controller.textController.text &&
+        (!hasSavedStickerDraft || !StickerCompositionController.tokenPattern.hasMatch(incomingText))) {
       controller.textController.text = incomingText;
     }
   }
@@ -164,7 +168,8 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
     if (!subject) {
       localController.debounceDraftSave?.cancel();
       localController.debounceDraftSave = Timer(const Duration(milliseconds: 500), () {
-        unawaited(ChatsSvc.setChatTextFieldText(chat, controller.textController.text));
+        unawaited(controller.saveStickerDraft());
+        unawaited(ChatsSvc.setChatTextFieldText(chat, controller.textController.plainDraftText));
       });
     }
 
@@ -313,10 +318,11 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
 
   @override
   void dispose() {
-    final draftText = controller.textController.text.trim().isNotEmpty ? controller.textController.text : '';
+    final draftText = controller.textController.plainDraftText.trim().isNotEmpty ? controller.textController.plainDraftText : '';
     final draftAttachments = controller.pickedAttachments.where((e) => e.path != null).map((e) => e.path!).toList();
     // Update ChatState synchronously and fire DB save in the background.
     unawaited(ChatsSvc.setChatTextFieldText(chat, draftText));
+    if (controller.stickerDraftError.value == null) unawaited(controller.saveStickerDraft());
     unawaited(ChatsSvc.setChatTextFieldAttachments(chat, draftAttachments));
 
     controller.focusNode.dispose();
@@ -336,6 +342,21 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
   }
 
   Future<void> sendMessage({String? effect}) async {
+    if (controller.stickerDraftError.value != null) {
+      return showSnackbar('Sticker draft', controller.stickerDraftError.value!);
+    }
+    if (controller.textController.hasComposition) {
+      try {
+        await controller.sendStickerComposition(effect: effect);
+      } catch (error) {
+        if (mounted) {
+          showSnackbar('Sticker draft', error is StateError ? error.message.toString() :
+            error is UnsupportedError ? error.message.toString() : 'Could not queue this sticker draft. Your draft is still here.');
+        }
+      }
+      return;
+    }
+    final ordinaryRevision = controller.textController.revision;
     final text = controller.textController.text;
     if (controller.scheduledDate.value != null) {
       final date = controller.scheduledDate.value!;
@@ -414,14 +435,16 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
         effectId: effect,
       ));
     }
+    final keepStickerDraft = !controller.textController.canClearAfterOrdinarySend(ordinaryRevision);
     controller.pickedAttachments.clear();
-    controller.textController.clear();
+    if (!keepStickerDraft) controller.textController.clear();
     controller.subjectTextController.clear();
     controller.replyToMessage = null;
     controller.scheduledDate.value = null;
     localController.debounceTyping = null;
     // Clear the draft now that the message has been sent.
-    unawaited(ChatsSvc.setChatTextFieldText(chat, ''));
+    unawaited(ChatsSvc.setChatTextFieldText(chat, keepStickerDraft ? controller.textController.plainDraftText : ''));
+    if (keepStickerDraft) unawaited(controller.saveStickerDraft());
     unawaited(ChatsSvc.setChatTextFieldAttachments(chat, []));
   }
 
@@ -467,6 +490,18 @@ class ConversationTextFieldState extends CustomState<ConversationTextField, void
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (controller.stickerDraftSaveError.value != null)
+                Padding(padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(controller.stickerDraftSaveError.value!)),
+              if (controller.stickerDraftError.value != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text(controller.stickerDraftError.value!),
+                    TextButton(onPressed: controller.discardSavedStickerDraft,
+                      child: const Text('Discard saved sticker draft')),
+                  ]),
+                ),
               Row(crossAxisAlignment: CrossAxisAlignment.end, children: [
                 TextFieldIconBar(controller: controller, localController: localController),
                 Expanded(

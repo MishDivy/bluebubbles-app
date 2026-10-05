@@ -15,6 +15,7 @@ class StickerBrowserController extends StatefulController {
   final NativeStickerTarget? target;
   final StickerTargetPreview? targetPreview;
   final bool Function()? isTargetCurrent;
+  final void Function(StickerFolderEntry)? insertIntoDraft;
   final placement = Rxn<StickerPlacement>();
   final operationSupported = false.obs;
   final submitted = false.obs;
@@ -47,7 +48,7 @@ class StickerBrowserController extends StatefulController {
   int _generation = 0;
   bool _disposed = false;
 
-  StickerBrowserController(this.chat, this.folders, {this.target, this.targetPreview, this.isTargetCurrent}) {
+  StickerBrowserController(this.chat, this.folders, {this.target, this.targetPreview, this.isTargetCurrent, this.insertIntoDraft}) {
     if (target != null &&
         (target!.chatGuid != chat.guid || target!.operation == NativeStickerOperation.removeTapback)) {
       throw ArgumentError('Choose an upload action for this conversation.');
@@ -90,7 +91,9 @@ class StickerBrowserController extends StatefulController {
       rowSupported.value = capabilities['stickerRows'] == true;
       operationSupported.value = target != null && capabilities[target!.capability] == true;
       capabilityReason.value = target == null
-          ? value
+          ? insertIntoDraft != null
+              ? capabilities['stickerComposition'] == true ? null : 'You can prepare a draft. The connected helper has not enabled rows or text with stickers.'
+              : value
                 ? null
                 : 'The connected server helper has not enabled native sticker sending.'
           : operationSupported.value
@@ -158,6 +161,10 @@ class StickerBrowserController extends StatefulController {
       folder.value = entry.uri;
       unawaited(load(reset: true));
     } else {
+      if (insertIntoDraft != null) {
+        try { insertIntoDraft!(entry); submitted.value = true; } on StateError catch (failure) { error.value = failure.message.toString(); }
+        return;
+      }
       if (target != null) {
         selection.assignAll([entry]);
         selected.value = entry;

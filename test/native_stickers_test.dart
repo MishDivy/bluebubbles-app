@@ -781,13 +781,14 @@ void main() {
 
   test('partial row staging failure cleans only its prepared originals', () async {
     const channel = MethodChannel('test-partial-sticker-row');
-    final staged = await File('${directory.path}/staged.gif').writeAsBytes([1, 2, 3]);
+    final stagedBytes = image.encodePng(image.Image(width: 2, height: 2));
+    final staged = await File('${directory.path}/staged.png').writeAsBytes(stagedBytes);
     var calls = 0;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, (call) async {
       expect(call.method, 'stage-sticker');
       calls++;
       if (calls == 2) throw PlatformException(code: 'revoked', message: 'Folder access was revoked.');
-      return {'path': staged.path, 'name': 'staged.gif', 'size': 3};
+      return {'path': staged.path, 'name': 'staged.png', 'size': stagedBytes.length};
     });
     addTearDown(
       () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(channel, null),
@@ -1093,6 +1094,7 @@ void main() {
     NativeStickerTarget? stickerTarget,
     StickerTargetPreview? preview,
     bool Function()? isTargetCurrent,
+    void Function(StickerFolderEntry)? insertIntoDraft,
   }) async {
     GetIt.I.registerSingleton<SettingsService>(SettingsService()..settings = Settings());
     GetIt.I.registerSingleton<ThemesService>(_Themes());
@@ -1112,6 +1114,7 @@ void main() {
           target: stickerTarget,
           targetPreview: preview,
           isTargetCurrent: isTargetCurrent,
+          insertIntoDraft: insertIntoDraft,
         ),
       ),
     );
@@ -1122,6 +1125,22 @@ void main() {
     Uint8List.fromList(image.encodePng(image.Image(width: 24, height: 12))),
     const Size(240, 120),
   );
+
+  testWidgets('compose browser inserts once without sending or photo override', (tester) async {
+    final folders = _Folders();
+    final inserted = <StickerFolderEntry>[];
+    await harness(tester, folders, supported: true, insertIntoDraft: inserted.add);
+    expect(find.text('Send standalone sticker'), findsNothing);
+    expect(find.text('Send as normal image'), findsNothing);
+    await tester.tap(find.text('a.png'));
+    await tester.pump();
+    final browser = tester.widget<StickerBrowser>(find.byType(StickerBrowser)).parentController;
+    browser.select(inserted.single);
+    expect(inserted, hasLength(1));
+    expect(folders.sends, 0);
+    expect(folders.rows, isEmpty);
+    await tester.pumpWidget(const SizedBox());
+  });
 
   testWidgets('placement preview uses measured native parent width and requires explicit single send', (tester) async {
     final folders = _Folders()..targetPending = Completer<void>();

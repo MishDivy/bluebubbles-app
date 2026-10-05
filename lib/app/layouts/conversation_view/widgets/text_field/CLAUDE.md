@@ -12,6 +12,8 @@
 - `voice_message_recorder.dart` — voice message recording logic
 - `picked_attachment.dart` / `picked_attachments_holder.dart` — pending attachment chip + holder
 - `reply_holder.dart` — selected reply preview above the field
+- `sticker_composition_controller.dart` — typed cursor-order sticker draft, restoration and immutable send snapshots
+- `draft_sticker_thumbnail.dart` — selected inline artwork, selection and removal controls
 
 ## Buttons (`buttons/`)
 Action buttons inside and around the input field:
@@ -43,3 +45,21 @@ All composer state lives in `ConversationViewController` (`lib/services/ui/chat/
 - Send → `OutgoingMsgHandler` (`OutgoingMessageHandler`)
 - Reply selection rendered by `widgets/message/reply/`
 - Mention autocomplete → `custom_text_editing_controllers.dart` in `lib/app/components/`
+
+## Sticker drafts
+
+Android folder selections insert one composer-local private-use marker with its typed SAF asset.
+The mention controller's U+FFFC delimiter stays separate. Only a validated send snapshot converts
+owned markers into the wire U+FFFC positions. Duplicate, unowned or pasted object markers fail closed.
+Text and assets save as one origin/chat-scoped preference record; the ordinary chat draft is marker-free.
+Invalid records remain untouched until the user chooses `Discard saved sticker draft`.
+
+Exactly one marker with no other text uses the existing standalone native path, including animation.
+Text or multiple markers require explicit `stickerComposition`; current preparation accepts static PNG
+only. Subject, reply, mentions, effects, schedules, edits and ordinary attachments are rejected visibly
+without clearing the draft. One queue attempt has a stable snapshot and server identity. Completion
+clears only the same draft revision. An ordinary send cannot clear stickers inserted while it was staging.
+The composer observes its controller to increase line height only while inline artwork is present.
+Drafts and the multipart wire preserve text/sticker order, but Samsung's mixed message display
+still puts text above stickers. This batch does not claim exact chat layout or full parity.
+Pure native row rendering and received animated multipart behavior are unchanged.

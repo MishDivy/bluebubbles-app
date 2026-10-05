@@ -17,6 +17,12 @@ Each resource has an interface and a concrete action file → `interfaces/CLAUDE
 - Owns the complete outbound send pipeline: serial queue, `_buildOutgoingMessages` / `_persistOutgoingMessages` / `prepAttachment`, HTTP + socket race via `_sendWithRace()`, send-progress trackers, GUID swap (`_matchMessageWithExisting()`), and error marking
 - Existing attachment metadata preserves native sticker intent and original bytes through queue and isolate sends. Marked native stickers use a dedicated endpoint and reject generic retry because an unsuccessful response can have an unknown delivery outcome.
 - Native rows prepare all selected originals, persist once, and send one multipart request. HTTP and socket confirmation reconcile exact indexed attachment GUID pairs; no filename or database-order matching is used for rows.
+- Composer sends use the same row queue with optional immutable text and server identity. One reserved
+  U+FFFC marker corresponds to each ordered asset. HTTP must confirm the entire attributed body,
+  transfer order, ranges and actual native part indexes against its verified composition hint.
+  Pending socket echoes cannot settle these attempts; confirmed echoes must retain the known asset
+  identities, and reduced receipts retain the verified body. Composition attempts never retry.
+  Failed preparation throws to the composer before dispatch so it can retain the draft.
 - `OutgoingTargetedSticker` shares this queue and preparation path. Placement, add/replace tapback,
   and removal retain immutable target intent in existing metadata and require matching native
   event type, parent GUID and real part before releasing progress. Uploads reconcile one distinct

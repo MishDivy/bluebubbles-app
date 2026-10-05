@@ -24,11 +24,15 @@ class SendMessageInterface {
     required String tempGuid,
     required List<PlatformFile> files,
     List<String?>? stickerLabels,
+    String? text,
+    String? expectedOrigin,
   }) async {
     final data = {
       'chatGuid': chatGuid, 'tempGuid': tempGuid,
       'files': files.map((file) => {'path': file.path, 'name': file.name, 'size': file.size}).toList(),
       'stickerLabels': stickerLabels,
+      'text': text,
+      'expectedOrigin': expectedOrigin,
     };
     if (isIsolate) return SendMessageActions.sendStickerRow(data);
     return GetIt.I<GlobalIsolate>().send<Map<String, dynamic>>(IsolateRequestType.sendStickerRow, input: data);
@@ -41,6 +45,7 @@ class SendMessageInterface {
     required String fileName,
     required int fileSize,
     String? stickerLabel,
+    String? expectedOrigin,
   }) async {
     final data = {
       'chatGuid': chatGuid,
@@ -49,6 +54,7 @@ class SendMessageInterface {
       'fileName': fileName,
       'fileSize': fileSize,
       'stickerLabel': stickerLabel,
+      'expectedOrigin': expectedOrigin,
     };
     if (isIsolate) return SendMessageActions.sendSticker(data);
     return GetIt.I<GlobalIsolate>().send<Map<String, dynamic>>(IsolateRequestType.sendSticker, input: data);

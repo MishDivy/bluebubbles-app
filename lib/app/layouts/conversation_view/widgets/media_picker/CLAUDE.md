@@ -16,13 +16,15 @@ UI for selecting media files to attach before sending a message.
 Opened from the compose bar via the attachment (paperclip / `+`) button in `widgets/text_field/`.
 Selected ordinary attachments are stored in `ConversationViewController.pickedAttachments`.
 The Android Stickers action opens `StickerBrowser`, whose `StickerBrowserController` owns Rx state.
-It uses the persisted SAF read grant through `StickerFolderService`. Sticker sends queue
-separately and preserve the conversation's draft and reply. Native Send requires an iMessage
+It uses the persisted SAF read grant through `StickerFolderService`. The compose-bar entry inserts
+selected artwork at the composer cursor and returns to the draft; it does not send from the browser.
+The browser's separate-send mode preserves the conversation's draft and reply. Native Send requires an iMessage
 chat and the connected helper's explicit `stickerSending` capability. Folder pages return at
 most 60 entries after scanning at most 200 provider rows; thumbnails load only visible tiles.
 Selection order defines a native row of 2–10 stickers, gated independently by `stickerRows`.
 Rows queue one message with distinct attachment GUIDs, not a series of single sends.
-The normal-image override is single-selection only; no selection is silently converted.
+The normal-image override belongs to separate-send mode and is single-selection only.
+No selected sticker draft is silently converted into an image.
 Message-part popup actions open the same browser with an immutable `NativeStickerTarget`.
 Target mode selects one sticker, offers no photo override, checks target/server freshness and
 locks after one queue attempt. Placement requires the exact part snapshot; galleries fail

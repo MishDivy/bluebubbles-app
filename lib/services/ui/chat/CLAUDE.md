@@ -39,14 +39,16 @@ GetX controller, one instance per open chat. Accessed via `cvc(chat)` helper or 
 
 **What it owns:**
 - `pickedAttachments` — files staged for sending
+- `textController` — mention-compatible typed sticker composer draft with cursor-order snapshots
 - `replyToMessage` — the message being replied to
 - `editing` mode flag
 - `AutoScrollController` for the message list scroll position
 - Media caches: sticker widgets, video players, audio players (keyed by attachment GUID)
 
 **Key properties:**
-- `isAlive` — `RxBool`; false when the view is popped. Check this before posting to the controller.
+- `isClosed` — lifecycle guard; also check the text controller's disposal when staging an inline sticker draft
 - `sendFunc` — callback registered by `SendAnimation`; call `controller.send(...)` to trigger it
+- `sendStickerComposition` — one immutable draft attempt, live capability/origin guards, single-sticker standalone routing and version-aware clearing
 
 **Lifecycle:** Created when a conversation opens, closed when it pops. A conversation can remain "alive" in the background when in tablet mode.
 

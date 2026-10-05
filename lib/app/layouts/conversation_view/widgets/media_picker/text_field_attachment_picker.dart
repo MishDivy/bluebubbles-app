@@ -214,7 +214,22 @@ class _AttachmentPickerState extends State<AttachmentPicker> with ThemeHelpers {
                   icon: Icons.emoji_emotions_outlined,
                   label: 'Stickers',
                   color: context.theme.colorScheme.primary,
-                  onTap: () => NavigationSvc.push(context, StickerBrowser(chat: controller.chat)),
+                  onTap: () {
+                    if (controller.stickerDraftError.value != null) {
+                      showSnackbar('Sticker draft', 'Discard the saved sticker draft before choosing another sticker.');
+                      return;
+                    }
+                    final origin = HttpSvc.origin;
+                    NavigationSvc.push(context, StickerBrowser(chat: controller.chat, insertIntoDraft: (entry) {
+                      if (controller.isClosed || HttpSvc.origin != origin || controller.textController.serverIdentity != origin) {
+                        throw StateError('The conversation or server changed. Open Stickers again.');
+                      }
+                      controller.textController.insertSticker(entry);
+                      unawaited(controller.saveStickerDraft());
+                      Navigator.of(context).pop();
+                      controller.focusNode.requestFocus();
+                    }));
+                  },
                 ),
               _QuickActionItem(
                 icon: Icons.camera_alt_rounded,

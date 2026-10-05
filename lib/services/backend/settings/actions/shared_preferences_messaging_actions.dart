@@ -21,6 +21,21 @@ class SharedPreferencesMessagingActions {
   static const String _replyToMessagePrefix = 'replyToMessage';
   static const String _replyToMessagePartPrefix = 'replyToMessagePart';
   static const String _hiddenStickerPlacementsKey = 'hiddenStickerPlacements';
+  static const String _stickerCompositionPrefix = 'stickerCompositionDraft';
+
+  String _compositionKey(String server, String chat) => '$_stickerCompositionPrefix:${jsonEncode([server, chat])}';
+
+  String? loadStickerComposition(String server, String chat) => service.i.getString(_compositionKey(server, chat));
+
+  Future<void> saveStickerComposition(String server, String chat, String? draft) async {
+    if (draft != null && draft.length > 65536) throw ArgumentError('The sticker draft is too large to save.');
+    final key = _compositionKey(server, chat);
+    if (draft == null) {
+      await service.i.remove(key);
+    } else {
+      await service.i.setString(key, draft);
+    }
+  }
 
   String _placementKey(String server, String chat, String placement) => jsonEncode([server, chat, placement]);
 

@@ -134,12 +134,14 @@ class _SendAnimationState extends CustomState<SendAnimation, SendData, Conversat
           // causing the sent message to never appear in the list.
           await Future.delayed(const Duration(milliseconds: 250));
           if (!mounted) return;
+          final ordinaryRevision = controller.textController.revision;
           await send(pendingData);
+          if (!mounted) return;
 
           // Clear the text field and attachments now that the send has been queued,
           // mirroring what ConversationTextField.sendMessage() does for normal sends.
           controller.pickedAttachments.clear();
-          controller.textController.clear();
+          if (controller.textController.canClearAfterOrdinarySend(ordinaryRevision)) controller.textController.clear();
           controller.subjectTextController.clear();
           controller.replyToMessage = null;
         });

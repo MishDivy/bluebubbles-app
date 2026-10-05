@@ -19,6 +19,7 @@ class StickerBrowser extends CustomStateful<StickerBrowserController> {
     NativeStickerTarget? target,
     StickerTargetPreview? targetPreview,
     bool Function()? isTargetCurrent,
+    void Function(StickerFolderEntry)? insertIntoDraft,
   }) : super(
          parentController: StickerBrowserController(
            chat,
@@ -26,6 +27,7 @@ class StickerBrowser extends CustomStateful<StickerBrowserController> {
            target: target,
            targetPreview: targetPreview,
            isTargetCurrent: isTargetCurrent,
+           insertIntoDraft: insertIntoDraft,
          ),
        );
 
@@ -76,6 +78,8 @@ class _StickerBrowserState extends CustomState<StickerBrowser, void, StickerBrow
     ),
     body: Column(
       children: [
+        if (controller.insertIntoDraft != null)
+          const Padding(padding: EdgeInsets.all(12), child: Text('Tap a sticker to insert it at the composer cursor. Rows and text with stickers currently support static PNG only. Animated stickers can be sent alone. Send from the conversation when your draft is ready.')),
         if (controller.target != null)
           const Padding(
             padding: EdgeInsets.all(12),
@@ -122,7 +126,7 @@ class _StickerBrowserState extends CustomState<StickerBrowser, void, StickerBrow
         ),
         Obx(() => controller.loading.value ? const LinearProgressIndicator() : const SizedBox.shrink()),
         Expanded(child: StickerGrid(controller: controller)),
-        StickerSelection(controller: controller),
+        if (controller.insertIntoDraft == null) StickerSelection(controller: controller),
       ],
     ),
   );

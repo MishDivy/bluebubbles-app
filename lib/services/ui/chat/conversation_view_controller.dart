@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:audio_waveforms/audio_waveforms.dart';
 import 'package:bluebubbles/app/components/custom_text_editing_controllers.dart';
+import 'package:bluebubbles/app/layouts/conversation_view/widgets/text_field/sticker_composition_controller.dart';
 import 'package:bluebubbles/app/wrappers/stateful_boilerplate.dart';
 import 'package:bluebubbles/database/models.dart';
 import 'package:bluebubbles/services/backend/interfaces/prefs_interface.dart';
+import 'package:bluebubbles/services/backend/filesystem/sticker_folder_service.dart';
 import 'package:bluebubbles/services/services.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_keyboard_visibility/flutter_keyboard_visibility.dart';
@@ -80,7 +82,72 @@ class ConversationViewController extends StatefulController with GetSingleTicker
   final RxList<PlatformFile> pickedAttachments = <PlatformFile>[].obs;
   final focusNode = FocusNode();
   final subjectFocusNode = FocusNode();
-  late final textController = MentionTextEditingController(focusNode: focusNode);
+  late final textController = StickerCompositionController(
+    serverIdentity: HttpSvc.origin, chatGuid: chat.guid, focusNode: focusNode);
+  final stickerDraftError = RxnString();
+  final stickerDraftSaveError = RxnString();
+  final sendingStickerComposition = false.obs;
+
+  Future<void> saveStickerDraft() async {
+    if (stickerDraftError.value != null) return;
+    try {
+      await PrefsSvc.messaging.saveStickerComposition(
+        textController.serverIdentity, chat.guid, textController.serializeDraft());
+      stickerDraftSaveError.value = null;
+    } catch (error) {
+      stickerDraftSaveError.value = error is ArgumentError
+        ? 'This sticker draft is too large to save. Shorten the text.'
+        : 'Could not save this sticker draft. Keep this conversation open and try again.';
+    }
+  }
+
+  Future<void> discardSavedStickerDraft() async {
+    await PrefsSvc.messaging.saveStickerComposition(textController.serverIdentity, chat.guid, null);
+    stickerDraftError.value = null;
+  }
+
+  bool restoreStickerDraft() {
+    final raw = PrefsSvc.messaging.loadStickerComposition(textController.serverIdentity, chat.guid);
+    if (raw == null) return false;
+    try {
+      textController.restoreDraft(raw);
+    } on FormatException {
+      stickerDraftError.value = 'The saved sticker draft could not be restored. It has not been sent or deleted.';
+    }
+    return true;
+  }
+
+  Future<void> sendStickerComposition({String? effect,
+      StickerFolderService folders = const StickerFolderService()}) async {
+    if (sendingStickerComposition.value) return;
+    if (stickerDraftError.value != null) throw StateError(stickerDraftError.value!);
+    if (!chat.isIMessage || subjectTextController.text.isNotEmpty || replyToMessage != null ||
+        effect != null || scheduledDate.value != null || pickedAttachments.isNotEmpty || editing.isNotEmpty) {
+      throw StateError('Text with stickers requires an iMessage draft without attachments, a subject, reply, effect, schedule or edit. Your draft is still here.');
+    }
+    final snapshot = textController.snapshot();
+    final standalone = snapshot.entries.length == 1 && snapshot.text == '\uFFFC';
+    bool current() => !isClosed && !textController.isDisposed &&
+      HttpSvc.origin == snapshot.serverIdentity && chat.guid == snapshot.chatGuid;
+    if (!current()) throw StateError('The conversation or server changed. Your draft is still here.');
+    sendingStickerComposition.value = true;
+    try {
+      final capabilities = await HttpSvc.message.stickerCapabilities();
+      if (!current()) throw StateError('The conversation or server changed. Your draft is still here.');
+      if (capabilities[standalone ? 'stickerSending' : 'stickerComposition'] != true) {
+        throw UnsupportedError(standalone ? 'The connected server helper has not enabled native stickers. Your draft is still here.' :
+          'The connected server helper has not enabled text with stickers. Your draft is still here.');
+      }
+      await folders.sendComposition(chat, snapshot.entries, snapshot.text, snapshot.serverIdentity, canQueue: current);
+      if (!current()) return;
+      if (textController.clearIfUnchanged(snapshot)) {
+        await ChatsSvc.setChatTextFieldText(chat, '');
+      }
+      await saveStickerDraft();
+    } finally {
+      sendingStickerComposition.value = false;
+    }
+  }
   late final subjectTextController = SpellCheckTextEditingController(focusNode: subjectFocusNode);
   final RxBool showRecording = false.obs;
   final RxList<Emoji> emojiMatches = <Emoji>[].obs;

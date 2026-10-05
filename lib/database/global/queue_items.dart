@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:bluebubbles/database/models.dart';
+import 'package:bluebubbles/helpers/types/helpers/sticker_helper.dart';
 
 enum QueueType { sendMessage, sendReaction, sendAttachment, sendMultipart, sendStickerRow, sendTargetedSticker }
 
@@ -99,6 +100,8 @@ class OutgoingMultipartMessage extends OutgoingQueueItem {
 
 class OutgoingStickerRow extends OutgoingQueueItem {
   final List<Attachment> attachments;
+  final String? compositionText;
+  final String? serverIdentity;
   @override
   final bool isRetry;
 
@@ -107,10 +110,23 @@ class OutgoingStickerRow extends OutgoingQueueItem {
     required super.chat,
     required super.message,
     required List<Attachment> attachments,
+    this.compositionText,
+    this.serverIdentity,
     this.isRetry = false,
   }) : attachments = List.unmodifiable(attachments),
        super(type: QueueType.sendStickerRow) {
-    if (attachments.length < 2 || attachments.length > 10) {
+    if (compositionText != null) {
+      StickerHelper.validateCompositionText(compositionText!, attachments.length);
+      if (serverIdentity == null ||
+          serverIdentity!.isEmpty ||
+          !chat.isIMessage ||
+          message.threadOriginatorGuid != null ||
+          message.associatedMessageGuid != null ||
+          message.expressiveSendStyleId != null ||
+          (message.subject?.isNotEmpty ?? false)) {
+        throw ArgumentError('A sticker composition requires its original server and an iMessage chat.');
+      }
+    } else if (attachments.length < 2 || attachments.length > 10) {
       throw ArgumentError('A native sticker row requires 2 to 10 attachments.');
     }
   }
@@ -118,15 +134,29 @@ class OutgoingStickerRow extends OutgoingQueueItem {
   void ensureAttachmentGuids() {
     final tempGuid = message.guid;
     if (tempGuid == null) throw StateError('A sticker row requires a stable message GUID.');
-    message.metadata = {...?message.metadata, 'nativeStickerRowSend': true};
+    if (compositionText != null) message.metadata?.remove('nativeStickerRowSend');
+    message.metadata = {
+      ...?message.metadata,
+      if (compositionText == null) 'nativeStickerRowSend': true,
+      if (compositionText != null) 'nativeStickerCompositionSend': true,
+      if (compositionText != null) 'nativeStickerCompositionText': compositionText,
+      if (compositionText != null) 'nativeStickerCompositionOrigin': serverIdentity,
+    };
+    if (compositionText != null) message.text = compositionText;
     for (var i = 0; i < attachments.length; i++) {
       attachments[i].guid ??= '$tempGuid-sticker-$i';
+      if (compositionText != null) {
+        attachments[i].metadata?.remove('nativeStickerRowSend');
+        attachments[i].metadata?.remove('stickerRow');
+      }
       attachments[i].metadata = {
         ...?attachments[i].metadata,
-        'nativeStickerRowSend': true,
+        if (compositionText == null) 'nativeStickerRowSend': true,
+        if (compositionText != null) 'nativeStickerCompositionSend': true,
         'preserveOriginalBytes': true,
         'isSticker': true,
-        'stickerRow': {'index': i, 'count': attachments.length, 'partIndex': 0},
+        if (compositionText == null) 'stickerRow': {'index': i, 'count': attachments.length, 'partIndex': 0},
+        if (compositionText != null) 'stickerCompositionIndex': i,
       };
     }
     final guids = attachments.map((attachment) => attachment.guid).toSet();
